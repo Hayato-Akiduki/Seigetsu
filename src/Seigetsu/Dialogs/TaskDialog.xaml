@@ -1,0 +1,60 @@
+<ui:FluentWindow x:Class="Seigetsu.Dialogs.TaskDialog"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 Width="500" SizeToContent="Height" ResizeMode="NoResize"
+                 WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+                 ExtendsContentIntoTitleBar="True" WindowBackdropType="None"
+                 FontFamily="{StaticResource AppFont}"
+                 Loaded="OnLoaded">
+    <Grid Background="{DynamicResource BgBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar Title="" ShowMinimize="False" ShowMaximize="False" />
+
+        <StackPanel Grid.Row="1" Margin="28,0,28,24">
+            <TextBlock x:Name="HeadingText" FontSize="20" FontWeight="Bold"
+                       Foreground="{DynamicResource TextBrush}" Margin="0,0,0,18" />
+
+            <TextBlock Text="タスク名" Style="{StaticResource FieldLabel}" />
+            <ui:TextBox x:Name="TitleBox" PlaceholderText="例：企画書を仕上げる" Margin="0,0,0,16" />
+
+            <TextBlock Text="優先度" Style="{StaticResource FieldLabel}" />
+            <ListBox x:Name="PriorityList" Style="{StaticResource SegmentedList}" Margin="0,0,0,16">
+                <ListBoxItem Content="高" />
+                <ListBoxItem Content="中" />
+                <ListBoxItem Content="低" />
+            </ListBox>
+
+            <TextBlock Text="カテゴリ" Style="{StaticResource FieldLabel}" />
+            <ComboBox x:Name="CategoryBox" IsEditable="True" Margin="0,0,0,16" />
+
+            <TextBlock Text="締切日（空欄でも可）" Style="{StaticResource FieldLabel}" />
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <DatePicker x:Name="DuePicker" Margin="0,0,8,0" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <ui:Button Content="今日" Tag="0" Click="OnQuickDueClick" Margin="0,0,4,0" />
+                    <ui:Button Content="明日" Tag="1" Click="OnQuickDueClick" Margin="0,0,4,0" />
+                    <ui:Button Content="1週間後" Tag="7" Click="OnQuickDueClick" Margin="0,0,4,0" />
+                    <ui:Button Content="なし" Tag="" Click="OnQuickDueClick" />
+                </StackPanel>
+            </Grid>
+
+            <TextBlock x:Name="ErrorText" FontSize="12" Foreground="{DynamicResource DangerBrush}"
+                       Margin="0,6,0,0" MinHeight="16" />
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+                <ui:Button Content="キャンセル" IsCancel="True" Padding="18,8" Margin="0,0,8,0" />
+                <ui:Button x:Name="SaveButton" Appearance="Primary" IsDefault="True" Padding="22,8"
+                           Click="OnSaveClick" />
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</ui:FluentWindow>

@@ -1,0 +1,105 @@
+<UserControl x:Class="Seigetsu.Pages.SettingsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             Loaded="OnLoaded" Unloaded="OnUnloaded">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="設定" Style="{StaticResource PageTitle}" Margin="0,0,0,18" />
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="0,0,6,0">
+                <!-- 外観 -->
+                <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="外観" Style="{StaticResource CardTitle}" Margin="0,0,0,2" />
+                        <TextBlock Text="画面の明るさを選べます。" Style="{StaticResource Muted}" FontSize="12" Margin="0,0,0,12" />
+                        <ListBox x:Name="AppearanceList" Style="{StaticResource SegmentedList}" HorizontalAlignment="Left"
+                                 SelectionChanged="OnAppearanceChanged">
+                            <ListBoxItem Content="ライト" Tag="LIGHT" />
+                            <ListBoxItem Content="ダーク" Tag="DARK" />
+                            <ListBoxItem Content="Windows に合わせる" Tag="SYSTEM" />
+                        </ListBox>
+                    </StackPanel>
+                </Border>
+
+                <!-- 集中タイマー -->
+                <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="集中タイマー（ポモドーロ）" Style="{StaticResource CardTitle}" Margin="0,0,0,2" />
+                        <TextBlock Text="作業と休憩の長さ（分）です。" Style="{StaticResource Muted}" FontSize="12" Margin="0,0,0,12" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="作業" Style="{StaticResource Muted}" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <ComboBox x:Name="WorkBox" Width="100" AutomationProperties.Name="作業の長さ（分）"
+                                      SelectionChanged="OnWorkChanged" />
+                            <TextBlock Text="休憩" Style="{StaticResource Muted}" FontSize="14" VerticalAlignment="Center" Margin="24,0,8,0" />
+                            <ComboBox x:Name="BreakBox" Width="100" AutomationProperties.Name="休憩の長さ（分）"
+                                      SelectionChanged="OnBreakChanged" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- × ボタン -->
+                <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="ウィンドウの × ボタン" Style="{StaticResource CardTitle}" Margin="0,0,0,2" />
+                        <TextBlock Style="{StaticResource Muted}" FontSize="12" Margin="0,0,0,12" TextWrapping="Wrap"
+                                   Text="タスクトレイに格納すると、タイマーや音楽を動かしたまま画面を隠せます。終わるときは、タスクトレイのアイコンを右クリックして「終了」を選ぶか、Ctrl+Q を押します。" />
+                        <ListBox x:Name="CloseActionList" Style="{StaticResource SegmentedList}" HorizontalAlignment="Left"
+                                 SelectionChanged="OnCloseActionChanged">
+                            <ListBoxItem Content="アプリを終了する" Tag="quit" />
+                            <ListBoxItem Content="タスクトレイに格納する" Tag="tray" />
+                        </ListBox>
+                    </StackPanel>
+                </Border>
+
+                <!-- データ -->
+                <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="データ" Style="{StaticResource CardTitle}" Margin="0,0,0,2" />
+                        <TextBlock x:Name="DataPathText" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" />
+                        <TextBlock x:Name="BackupText" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap"
+                                   Margin="0,4,0,0" Visibility="Collapsed" />
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <ui:Button Content="CSVで書き出す" Icon="{ui:SymbolIcon ArrowDownload24}" Padding="14,7"
+                                       Margin="0,0,8,0" Click="OnExportClick" />
+                            <ui:Button Content="データのフォルダを開く" Icon="{ui:SymbolIcon FolderOpen24}" Padding="14,7"
+                                       Click="OnOpenFolderClick" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- アップデート -->
+                <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="アップデート" Style="{StaticResource CardTitle}" Margin="0,0,0,2" />
+                        <TextBlock Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap"
+                                   Text="新しい版が出ると、自動でダウンロードして、アプリを閉じたときに更新します。" />
+                        <TextBlock x:Name="UpdateStatusText" FontSize="13" TextWrapping="Wrap" Margin="0,8,0,0"
+                                   Foreground="{DynamicResource TextBrush}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <ui:Button x:Name="CheckUpdateButton" Content="新しい版を確認" Icon="{ui:SymbolIcon ArrowSync24}"
+                                       Padding="14,7" Margin="0,0,8,0" Click="OnCheckUpdateClick" />
+                            <ui:Button x:Name="UpdateNowButton" Content="今すぐ更新して再起動" Icon="{ui:SymbolIcon ArrowClockwise24}"
+                                       Appearance="Primary" Padding="14,7" Visibility="Collapsed" Click="OnUpdateNowClick" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- このアプリについて -->
+                <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="このアプリについて" Style="{StaticResource CardTitle}" Margin="0,0,0,2" />
+                        <TextBlock x:Name="VersionText" Style="{StaticResource Muted}" FontSize="12" />
+                        <TextBlock Style="{StaticResource Muted}" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"
+                                   Text="使っている部品：WPF-UI、Microsoft.Data.Sqlite、NAudio、NAudio.Vorbis、Velopack（いずれも MIT ライセンス）" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

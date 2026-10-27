@@ -1,0 +1,52 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <!-- タスクトレイのアイコン（NotifyIcon）だけ Windows Forms の部品を使う -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- 起動の入り口は Program.cs（Velopack を最初に動かすため） -->
+    <StartupObject>Seigetsu.Program</StartupObject>
+
+    <AssemblyName>Seigetsu</AssemblyName>
+    <RootNamespace>Seigetsu</RootNamespace>
+    <ApplicationIcon>Assets\seigetsu.ico</ApplicationIcon>
+    <Version>7.0.0</Version>
+    <Product>霽月 - Seigetsu</Product>
+    <Description>デスクトップ作業アシスタント</Description>
+
+    <!--
+      新しい版を置く GitHub のリポジトリ（例: https://github.com/your-name/seigetsu）。
+      アプリの自動更新と build-release.ps1 の両方がここを読む。空のあいだは自動更新しない。
+    -->
+    <UpdateRepositoryUrl>https://github.com/Hayato-Akiduki/Seigetsu</UpdateRepositoryUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="UpdateRepositoryUrl" Value="$(UpdateRepositoryUrl)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
+    <PackageReference Include="NAudio" Version="3.3.0" />
+    <PackageReference Include="NAudio.Vorbis" Version="3.0.0" />
+    <PackageReference Include="Velopack" Version="1.2.161" />
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- WPF では System.IO が自動で読み込まれないため -->
+    <Using Include="System.IO" />
+    <!-- Windows Forms の名前（Button や Application など）が WPF とぶつからないよう、自動では読み込まない -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\seigetsu.ico" />
+  </ItemGroup>
+
+</Project>
