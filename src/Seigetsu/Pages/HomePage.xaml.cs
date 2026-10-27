@@ -31,6 +31,8 @@ public partial class HomePage : UserControl, IRefreshable
 
     private void OnUnloaded(object sender, RoutedEventArgs e) => _clock.Stop();
 
+    private void OnBigClockClick(object sender, RoutedEventArgs e) => ((MainWindow)Window.GetWindow(this)).ShowBigClock();
+
     private void UpdateClock()
     {
         var now = DateTime.Now;

@@ -30,4 +30,5 @@ public static class SettingKeys
     public const string BreakMinutes = "pomodoro_break_min";
     public const string CloseAction = "close_action";     // quit / tray
     public const string Volume = "music_volume";
+    public const string SidebarCollapsed = "sidebar_collapsed"; // 1 / 0（v7 だけの設定）
 }

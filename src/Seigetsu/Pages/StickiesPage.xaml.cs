@@ -8,7 +8,10 @@ using Wpf.Ui.Controls;
 namespace Seigetsu.Pages;
 
 /// <summary>付箋 1 枚分の表示用データ。</summary>
-public sealed record StickyView(StickyNote Note, Brush Background, string DateText);
+public sealed record StickyView(StickyNote Note, Brush Background, string DateText, bool OnDesktop)
+{
+    public string DesktopLabel => OnDesktop ? "デスクトップから外す" : "デスクトップに表示";
+}
 
 public partial class StickiesPage : UserControl, IRefreshable
 {
@@ -24,12 +27,13 @@ public partial class StickiesPage : UserControl, IRefreshable
     public void Refresh()
     {
         var notes = App.Database.GetStickies();
-        SubtitleText.Text = notes.Count > 0 ? $"{notes.Count}枚 ・ クリックで編集できます" : "";
+        SubtitleText.Text = notes.Count > 0 ? $"{notes.Count}枚 ・ クリックで編集できます ・ 右上のボタンでデスクトップに表示できます" : "";
         Board.ItemsSource = notes.Select(n => new StickyView(
             n,
             ThemeService.StickyBrush(n.Id),
             // 2026-10-27T09:47:31 → 2026-10-27 09:47（v6 と同じ）
-            n.CreatedAt.Length >= 16 ? n.CreatedAt[..16].Replace('T', ' ') : n.CreatedAt)).ToList();
+            n.CreatedAt.Length >= 16 ? n.CreatedAt[..16].Replace('T', ' ') : n.CreatedAt,
+            App.DesktopStickies.IsShown(n.Id))).ToList();
         EmptyText.Visibility = notes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -38,6 +42,16 @@ public partial class StickiesPage : UserControl, IRefreshable
     private void OnAddClick(object sender, RoutedEventArgs e) => Main.OpenStickyDialog();
 
     private void OnCardClick(object sender, RoutedEventArgs e) => Main.OpenStickyDialog(NoteOf(sender));
+
+    private void OnDesktopClick(object sender, RoutedEventArgs e)
+    {
+        // 付箋を押したことにならないよう、ここで止める
+        e.Handled = true;
+        var note = NoteOf(sender);
+        var showing = !App.DesktopStickies.IsShown(note.Id);
+        App.DesktopStickies.Toggle(note.Id);
+        Main.Notify(showing ? "付箋をデスクトップに表示しました。" : "付箋をデスクトップから外しました。");
+    }
 
     private async void OnDeleteClick(object sender, RoutedEventArgs e)
     {

@@ -19,6 +19,9 @@ public partial class App : Application
     /// <summary>自動更新（インストールした霽月だけで動く）。</summary>
     public static UpdateService Updates { get; private set; } = null!;
 
+    /// <summary>デスクトップに出している付箋の窓。</summary>
+    public static DesktopStickies DesktopStickies { get; private set; } = null!;
+
     private SingleInstance? _instance;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -49,9 +52,12 @@ public partial class App : Application
         ThemeService.Apply(Database.GetSetting(SettingKeys.Appearance, "LIGHT"));
 
         Updates = new UpdateService();
+        DesktopStickies = new DesktopStickies();
 
         var main = new MainWindow();
         main.Show();
+        // 前回デスクトップに出していた付箋を、同じ場所に出し直す
+        DesktopStickies.Refresh();
         _instance.ListenForShow(Dispatcher, main.ShowFromTray);
         Updates.Start(Dispatcher);
 

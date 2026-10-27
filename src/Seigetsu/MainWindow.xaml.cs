@@ -29,6 +29,7 @@ public partial class MainWindow : FluentWindow
         new("calendar", "カレンダー", SymbolRegular.CalendarLtr24, () => new CalendarPage()),
         new("stats", "分析", SymbolRegular.DataBarVertical24, () => new StatsPage()),
         new("stickies", "付箋", SymbolRegular.Note24, () => new StickiesPage()),
+        new("board", "掲示板", SymbolRegular.Board24, () => new BoardPage()),
         new("music", "BGM", SymbolRegular.MusicNote224, () => new MusicPage()),
         new("settings", "設定", SymbolRegular.Settings24, () => new SettingsPage()),
     ];
@@ -53,6 +54,7 @@ public partial class MainWindow : FluentWindow
         VersionText.Text = $"v{version?.ToString(3)}（C# 版・開発中）";
         NavList.ItemsSource = _items;
         NavList.SelectedIndex = 0;
+        ApplySidebar(App.Database.GetSetting(SettingKeys.SidebarCollapsed, "0") == "1");
 
         _tick.Tick += (_, _) => OnTick();
         _tick.Start();
@@ -73,7 +75,41 @@ public partial class MainWindow : FluentWindow
         PageHost.Content = page;
     }
 
-    private void ShowPage(string key) => NavList.SelectedIndex = _items.FindIndex(i => i.Key == key);
+    // ---- 左メニューの開閉 -----------------------------------------------
+    private bool _sidebarCollapsed;
+
+    private void OnSidebarToggleClick(object sender, RoutedEventArgs e) => ToggleSidebar();
+
+    private void ToggleSidebar()
+    {
+        ApplySidebar(!_sidebarCollapsed);
+        App.Database.SetSetting(SettingKeys.SidebarCollapsed, _sidebarCollapsed ? "1" : "0");
+    }
+
+    /// <summary>閉じるとアイコンだけの細い幅にする（ロゴの文字・バージョン・タイマーの文字は隠し、開始ボタンは残す）。</summary>
+    private void ApplySidebar(bool collapsed)
+    {
+        _sidebarCollapsed = collapsed;
+        var hidden = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        SidebarColumn.Width = new GridLength(collapsed ? 76 : 232);
+        Logo.Visibility = hidden;
+        VersionText.Visibility = hidden;
+        NavList.Tag = collapsed ? "collapsed" : "expanded";
+
+        MiniText.Visibility = hidden;
+        MiniBox.Padding = collapsed ? new Thickness(0, 4, 0, 4) : new Thickness(14, 8, 6, 8);
+        Grid.SetColumn(MiniButton, collapsed ? 0 : 1);
+        Grid.SetColumnSpan(MiniButton, collapsed ? 2 : 1);
+        MiniButton.HorizontalAlignment = collapsed ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
+
+        SidebarToggleIcon.Symbol = collapsed ? SymbolRegular.PanelLeftExpand24 : SymbolRegular.PanelLeftContract24;
+        var label = collapsed ? "メニューを開く" : "メニューを閉じる";
+        SidebarToggle.ToolTip = $"{label}（Ctrl+B）";
+        System.Windows.Automation.AutomationProperties.SetName(SidebarToggle, label);
+        UpdateMiniTimer();
+    }
+
+    public void ShowPage(string key) => NavList.SelectedIndex = _items.FindIndex(i => i.Key == key);
 
     // ---- タスクトレイ ---------------------------------------------------
     /// <summary>タスクトレイに隠れている（または最小化している）窓を前に出す。</summary>
@@ -114,8 +150,11 @@ public partial class MainWindow : FluentWindow
         QuitApp();
     }
 
-    /// <summary>タスクの追加（task が null）か編集の画面を開き、保存されたらデータベースに書く。</summary>
-    public void OpenTaskDialog(TaskItem? task = null, string presetDue = "")
+    /// <summary>
+    /// タスクの追加（task が null）か編集の画面を開き、保存されたらデータベースに書く。
+    /// onAdded は、新しく追加したとき画面を作り直す前に、その id で呼ばれる（掲示板で、作ってすぐ貼るため）。
+    /// </summary>
+    public void OpenTaskDialog(TaskItem? task = null, string presetDue = "", Action<long>? onAdded = null)
     {
         var db = App.Database;
         var dialog = new TaskDialog(task, db.Categories(), presetDue) { Owner = this };
@@ -124,7 +163,8 @@ public partial class MainWindow : FluentWindow
 
         if (task is null)
         {
-            db.AddTask(dialog.ResultTitle, dialog.ResultPriority, dialog.ResultDue, dialog.ResultCategory);
+            var id = db.AddTask(dialog.ResultTitle, dialog.ResultPriority, dialog.ResultDue, dialog.ResultCategory);
+            onAdded?.Invoke(id);
             Notify($"タスク「{dialog.ResultTitle}」を追加しました。");
         }
         else
@@ -135,16 +175,20 @@ public partial class MainWindow : FluentWindow
         DataChanged();
     }
 
-    /// <summary>付箋の追加（note が null）か編集の画面を開き、保存されたらデータベースに書く。</summary>
-    public void OpenStickyDialog(StickyNote? note = null)
+    /// <summary>
+    /// 付箋の追加（note が null）か編集の画面を開き、保存されたらデータベースに書く。
+    /// onAdded は、新しく追加したとき画面を作り直す前に、その id で呼ばれる。
+    /// </summary>
+    public void OpenStickyDialog(StickyNote? note = null, Action<long>? onAdded = null, Window? owner = null)
     {
-        var dialog = new StickyDialog(note) { Owner = this };
+        var dialog = new StickyDialog(note) { Owner = owner ?? this };
         if (dialog.ShowDialog() != true)
             return;
 
         if (note is null)
         {
-            App.Database.AddSticky(dialog.ResultTitle, dialog.ResultBody);
+            var id = App.Database.AddSticky(dialog.ResultTitle, dialog.ResultBody);
+            onAdded?.Invoke(id);
             Notify("付箋を追加しました。");
         }
         else
@@ -158,6 +202,7 @@ public partial class MainWindow : FluentWindow
     /// <summary>データが変わったとき、表示中の画面を作り直す（ほかの画面は開いたときに更新される）。</summary>
     public void DataChanged()
     {
+        App.DesktopStickies.Refresh(); // デスクトップの付箋も、中身・色を合わせる
         if (PageHost.Content is IRefreshable page)
             page.Refresh();
     }
@@ -170,6 +215,21 @@ public partial class MainWindow : FluentWindow
     {
         ThemeService.Apply(mode);
         DataChanged();
+    }
+
+    private ClockWindow? _clock;
+
+    /// <summary>時計を画面いっぱいに出す（もう出ていれば前に出すだけ）。</summary>
+    public void ShowBigClock()
+    {
+        if (_clock is not null)
+        {
+            _clock.Activate();
+            return;
+        }
+        _clock = new ClockWindow(this);
+        _clock.Closed += (_, _) => _clock = null;
+        _clock.Show();
     }
 
     /// <summary>タスクと作業記録を CSV に書き出す（分析画面と設定画面から）。</summary>
@@ -258,7 +318,9 @@ public partial class MainWindow : FluentWindow
         }
 
         var track = App.Player.Current;
-        MiniMusic.Visibility = track is null ? Visibility.Collapsed : Visibility.Visible;
+        MiniMusic.Visibility = track is null || _sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
+        // メニューを閉じているときは、タイマーの時間をボタンにマウスを乗せると出す
+        MiniButton.ToolTip = _sidebarCollapsed ? $"開始・一時停止（{MiniStatus.Text}　{MiniTime.Text}）" : "開始・一時停止";
         if (track is not null)
             MiniMusic.Text = $"♪ {track.Name}{(App.Player.Paused ? "（一時停止）" : "")}";
     }
@@ -327,6 +389,7 @@ public partial class MainWindow : FluentWindow
         foreach (var page in _pages.Values.OfType<ISavable>())
             page.Flush();
         App.Timer.Reset();
+        App.DesktopStickies.CloseAll(); // 出していた付箋は、次に起動したときにまた出る
         _tick.Stop();
         App.Player.StateChanged -= UpdateMiniTimer;
         App.Player.Dispose();
@@ -364,19 +427,31 @@ public partial class MainWindow : FluentWindow
         FlashWindowEx(ref info);
     }
 
-    // Ctrl+1〜9 で画面切り替え、Ctrl+N で新しいタスク、Ctrl+Q で終了（v6 と同じ）
+    // Ctrl+1〜9 で画面切り替え（10 番目の画面は Ctrl+0）、Ctrl+N で新しいタスク、Ctrl+Q で終了（v6 と同じ）
+    // F11 で時計を大画面に、Ctrl+B で左メニューの開閉
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.F11 && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            ShowBigClock();
+            e.Handled = true;
+            return;
+        }
         if (Keyboard.Modifiers != ModifierKeys.Control)
             return;
-        if (e.Key == Key.N)
+        if (e.Key == Key.B)
+        {
+            ToggleSidebar();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.N)
         {
             OpenTaskDialog();
             e.Handled = true;
         }
-        else if (e.Key is >= Key.D1 and <= Key.D9)
+        else if (e.Key is >= Key.D0 and <= Key.D9)
         {
-            var index = e.Key - Key.D1;
+            var index = e.Key == Key.D0 ? 9 : e.Key - Key.D1;
             if (index < _items.Count)
                 NavList.SelectedIndex = index;
             e.Handled = true;

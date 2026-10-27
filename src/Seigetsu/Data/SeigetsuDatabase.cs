@@ -7,6 +7,12 @@ public sealed record TaskItem(
 
 public sealed record StickyNote(long Id, string Title, string Body, string CreatedAt);
 
+/// <summary>掲示板に貼ったもの 1 枚。Kind は "memo" / "sticky" / "task"、RefId はその id（メモは 1）。</summary>
+/// <summary>デスクトップに出している付箋 1 枚の、窓の位置と大きさ。</summary>
+public sealed record DesktopSticky(long StickyId, double X, double Y, double Width, double Height, bool Topmost);
+
+public sealed record BoardItem(long Id, string Kind, long RefId, double X, double Y, long Z);
+
 /// <summary>タスク一覧の絞り込み（v6 と同じ 5 種類）。</summary>
 public enum TaskFilter { All, Open, Done, Favorite, Overdue }
 
@@ -149,6 +155,27 @@ public sealed class SeigetsuDatabase
                 body TEXT NOT NULL,
                 created_at TEXT NOT NULL)
             """);
+        // 掲示板（v7 で追加。v6 はこの表を使わないので、あっても困らない）
+        Run("""
+            CREATE TABLE IF NOT EXISTS board_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL,
+                ref_id INTEGER NOT NULL,
+                x REAL NOT NULL,
+                y REAL NOT NULL,
+                z INTEGER NOT NULL DEFAULT 0,
+                UNIQUE (kind, ref_id))
+            """);
+        // デスクトップに出している付箋（v7 で追加）
+        Run("""
+            CREATE TABLE IF NOT EXISTS desktop_stickies (
+                sticky_id INTEGER PRIMARY KEY,
+                x REAL NOT NULL,
+                y REAL NOT NULL,
+                width REAL NOT NULL,
+                height REAL NOT NULL,
+                topmost INTEGER NOT NULL DEFAULT 1)
+            """);
         Run("""
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -171,12 +198,14 @@ public sealed class SeigetsuDatabase
             """, ("$key", key), ("$value", value));
 
     // ---- タスク -------------------------------------------------------
-    public void AddTask(string title, string priority = "中", string dueDate = "", string category = "一般") =>
-        Execute("""
+    /// <summary>追加したタスクの id を返す。</summary>
+    public long AddTask(string title, string priority = "中", string dueDate = "", string category = "一般") =>
+        Convert.ToInt64(Scalar("""
             INSERT INTO tasks (title, completed, created_at, priority, due_date, category, favorite)
             VALUES ($title, 0, $now, $priority, $due, $category, 0)
+            RETURNING id
             """,
-            ("$title", title), ("$now", Now), ("$priority", priority), ("$due", dueDate), ("$category", category));
+            ("$title", title), ("$now", Now), ("$priority", priority), ("$due", dueDate), ("$category", category)));
 
     public void UpdateTask(long id, string title, string priority, string dueDate, string category) =>
         Execute("UPDATE tasks SET title = $title, priority = $priority, due_date = $due, category = $category WHERE id = $id",
@@ -188,8 +217,11 @@ public sealed class SeigetsuDatabase
     public void ToggleFavorite(long id) =>
         Execute("UPDATE tasks SET favorite = 1 - favorite WHERE id = $id", ("$id", id));
 
-    public void DeleteTask(long id) =>
+    public void DeleteTask(long id)
+    {
         Execute("DELETE FROM tasks WHERE id = $id", ("$id", id));
+        Execute("DELETE FROM board_items WHERE kind = 'task' AND ref_id = $id", ("$id", id));
+    }
 
     /// <summary>タスク画面の一覧。並び順は v6 と同じ（未完了 → お気に入り → 優先度 → 締切）。</summary>
     public IReadOnlyList<TaskItem> GetTasks(string search = "", TaskFilter filter = TaskFilter.All)
@@ -343,16 +375,21 @@ public sealed class SeigetsuDatabase
         Execute("DELETE FROM playlist WHERE id = $id", ("$id", id));
 
     // ---- 付箋 ---------------------------------------------------------
-    public void AddSticky(string title, string body) =>
-        Execute("INSERT INTO sticky_notes (title, body, created_at) VALUES ($title, $body, $now)",
-            ("$title", title), ("$body", body), ("$now", Now));
+    /// <summary>追加した付箋の id を返す。</summary>
+    public long AddSticky(string title, string body) =>
+        Convert.ToInt64(Scalar("INSERT INTO sticky_notes (title, body, created_at) VALUES ($title, $body, $now) RETURNING id",
+            ("$title", title), ("$body", body), ("$now", Now)));
 
     public void UpdateSticky(long id, string title, string body) =>
         Execute("UPDATE sticky_notes SET title = $title, body = $body WHERE id = $id",
             ("$title", title), ("$body", body), ("$id", id));
 
-    public void DeleteSticky(long id) =>
+    public void DeleteSticky(long id)
+    {
         Execute("DELETE FROM sticky_notes WHERE id = $id", ("$id", id));
+        Execute("DELETE FROM board_items WHERE kind = 'sticky' AND ref_id = $id", ("$id", id));
+        Execute("DELETE FROM desktop_stickies WHERE sticky_id = $id", ("$id", id));
+    }
 
     /// <summary>新しい順（v6 と同じ）。</summary>
     public IReadOnlyList<StickyNote> GetStickies()
@@ -366,6 +403,79 @@ public sealed class SeigetsuDatabase
             notes.Add(new StickyNote(reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
         return notes;
     }
+
+    // ---- デスクトップの付箋 ---------------------------------------------
+    /// <summary>デスクトップに出している付箋。消された付箋の分は先に片付ける（v6 で消した場合など）。</summary>
+    public IReadOnlyList<DesktopSticky> GetDesktopStickies()
+    {
+        Execute("DELETE FROM desktop_stickies WHERE sticky_id NOT IN (SELECT id FROM sticky_notes)");
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT sticky_id, x, y, width, height, topmost FROM desktop_stickies ORDER BY sticky_id";
+        var items = new List<DesktopSticky>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            items.Add(new DesktopSticky(reader.GetInt64(0), reader.GetDouble(1), reader.GetDouble(2),
+                reader.GetDouble(3), reader.GetDouble(4), reader.GetInt64(5) != 0));
+        return items;
+    }
+
+    /// <summary>デスクトップに出す（最初は最前面）。すでに出ていれば何もしない。</summary>
+    public void ShowStickyOnDesktop(long stickyId, double x, double y, double width, double height) =>
+        Execute("""
+            INSERT OR IGNORE INTO desktop_stickies (sticky_id, x, y, width, height, topmost)
+            VALUES ($id, $x, $y, $w, $h, 1)
+            """, ("$id", stickyId), ("$x", x), ("$y", y), ("$w", width), ("$h", height));
+
+    public void SaveDesktopStickyBounds(long stickyId, double x, double y, double width, double height) =>
+        Execute("UPDATE desktop_stickies SET x = $x, y = $y, width = $w, height = $h WHERE sticky_id = $id",
+            ("$x", x), ("$y", y), ("$w", width), ("$h", height), ("$id", stickyId));
+
+    public void SetDesktopStickyTopmost(long stickyId, bool topmost) =>
+        Execute("UPDATE desktop_stickies SET topmost = $top WHERE sticky_id = $id",
+            ("$top", topmost ? 1 : 0), ("$id", stickyId));
+
+    /// <summary>デスクトップから外す（付箋そのものは消さない）。</summary>
+    public void RemoveStickyFromDesktop(long stickyId) =>
+        Execute("DELETE FROM desktop_stickies WHERE sticky_id = $id", ("$id", stickyId));
+
+    // ---- 掲示板 -------------------------------------------------------
+    /// <summary>貼ってあるもの。下にあるもの（z が小さい順）から。消された付箋・タスクの分は先に片付ける（v6 で消した場合など）。</summary>
+    public IReadOnlyList<BoardItem> GetBoardItems()
+    {
+        Execute("""
+            DELETE FROM board_items
+            WHERE (kind = 'sticky' AND ref_id NOT IN (SELECT id FROM sticky_notes))
+               OR (kind = 'task' AND ref_id NOT IN (SELECT id FROM tasks))
+            """);
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, kind, ref_id, x, y, z FROM board_items ORDER BY z, id";
+        var items = new List<BoardItem>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            items.Add(new BoardItem(reader.GetInt64(0), reader.GetString(1), reader.GetInt64(2),
+                reader.GetDouble(3), reader.GetDouble(4), reader.GetInt64(5)));
+        return items;
+    }
+
+    /// <summary>いちばん上に貼る。すでに貼ってあれば何もしない。貼ったら true。</summary>
+    public bool PinToBoard(string kind, long refId, double x, double y) =>
+        Execute("""
+            INSERT OR IGNORE INTO board_items (kind, ref_id, x, y, z)
+            VALUES ($kind, $ref, $x, $y, (SELECT COALESCE(MAX(z), 0) + 1 FROM board_items))
+            """, ("$kind", kind), ("$ref", refId), ("$x", x), ("$y", y)) > 0;
+
+    /// <summary>動かした場所に置き直し、いちばん上に重ねる。</summary>
+    public void MoveBoardItem(long id, double x, double y) =>
+        Execute("""
+            UPDATE board_items SET x = $x, y = $y, z = (SELECT COALESCE(MAX(z), 0) + 1 FROM board_items)
+            WHERE id = $id
+            """, ("$x", x), ("$y", y), ("$id", id));
+
+    /// <summary>掲示板からはがす（付箋やタスクそのものは消さない）。</summary>
+    public void UnpinBoardItem(long id) =>
+        Execute("DELETE FROM board_items WHERE id = $id", ("$id", id));
 
     // ---- 作業記録 -----------------------------------------------------
     /// <summary>計った時間を記録する。5 秒未満は押し間違いとみなして記録しない（v6 と同じ）。</summary>

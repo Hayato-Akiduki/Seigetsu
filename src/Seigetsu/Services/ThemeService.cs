@@ -25,6 +25,16 @@ public static class ThemeService
         ["OnAccentBrush"] = ("#FFFFFF", "#0E1524"), // 青く塗った上の文字
         // グラフの棒。カードの色との差が 3:1 以上になるよう、暗い外観では少し落ち着いた青にしている
         ["ChartBarBrush"] = ("#3B66C4", "#5F86DA"),
+        // 左メニュー。明るい外観では白、暗い外観では紺
+        ["SidebarBrush"] = ("#FFFFFF", "#18233D"),
+        ["SidebarLineBrush"] = ("#DCE3EE", "#18233D"), // 右端の線（暗い外観では見えなくする）
+        ["SidebarTextBrush"] = ("#3A4760", "#D3DDEE"),
+        ["SidebarMutedBrush"] = ("#5D6B82", "#8D9BB6"),
+        ["SidebarStrongBrush"] = ("#1B2840", "#FFFFFF"), // 選んでいる項目・タイマーの数字
+        ["SidebarActiveBrush"] = ("#E3EBFA", "#2C3E66"),
+        ["SidebarHoverBrush"] = ("#EEF2F8", "#223152"),
+        // 月の色。明るい外観の白い地では薄い黄色が見えないので、濃い金色にする
+        ["MoonBrush"] = ("#A8741A", "#F3E7B8"),
     };
 
     public static bool IsDark { get; private set; }

@@ -9,13 +9,15 @@
                 <ui:ControlsDictionary />
             </ResourceDictionary.MergedDictionaries>
 
-            <!-- 左メニューは明るい外観でも暗い色のまま（v6 と同じ） -->
-            <SolidColorBrush x:Key="SidebarBrush" Color="#18233D" />
-            <SolidColorBrush x:Key="SidebarTextBrush" Color="#D3DDEE" />
-            <SolidColorBrush x:Key="SidebarMutedBrush" Color="#8D9BB6" />
-            <SolidColorBrush x:Key="SidebarActiveBrush" Color="#2C3E66" />
-            <SolidColorBrush x:Key="SidebarHoverBrush" Color="#223152" />
-            <SolidColorBrush x:Key="MoonBrush" Color="#F3E7B8" />
+            <!-- 左メニューの色。外観に合わせて ThemeService が差し替える -->
+            <SolidColorBrush x:Key="SidebarBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="SidebarLineBrush" Color="#DCE3EE" />
+            <SolidColorBrush x:Key="SidebarTextBrush" Color="#3A4760" />
+            <SolidColorBrush x:Key="SidebarMutedBrush" Color="#5D6B82" />
+            <SolidColorBrush x:Key="SidebarStrongBrush" Color="#1B2840" />
+            <SolidColorBrush x:Key="SidebarActiveBrush" Color="#E3EBFA" />
+            <SolidColorBrush x:Key="SidebarHoverBrush" Color="#EEF2F8" />
+            <SolidColorBrush x:Key="MoonBrush" Color="#A8741A" />
 
             <!-- 外観で変わる色。ThemeService が明るい／暗いに合わせて差し替える -->
             <SolidColorBrush x:Key="BgBrush" Color="#EEF2F8" />

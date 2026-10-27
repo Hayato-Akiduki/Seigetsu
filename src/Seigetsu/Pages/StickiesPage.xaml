@@ -64,11 +64,20 @@
                                     </Grid.RowDefinitions>
                                     <TextBlock Text="{Binding Note.Title}" FontSize="15" FontWeight="Bold" TextWrapping="Wrap"
                                                Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center" />
-                                    <ui:Button Grid.Column="1" Style="{StaticResource IconButton}" Padding="6" Margin="4,-4,0,0"
-                                               ToolTip="削除" Click="OnDeleteClick"
-                                               AutomationProperties.Name="{Binding Note.Title, StringFormat=付箋「{0}」を削除}">
-                                        <ui:SymbolIcon Symbol="Dismiss24" FontSize="16" Foreground="{DynamicResource MutedBrush}" />
-                                    </ui:Button>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="4,-4,0,0" VerticalAlignment="Top">
+                                        <!-- デスクトップに出す・外す（出しているときは塗りつぶしのアイコン） -->
+                                        <ui:Button Style="{StaticResource IconButton}" Padding="6" Margin="0"
+                                                   ToolTip="{Binding DesktopLabel}" Click="OnDesktopClick"
+                                                   AutomationProperties.Name="{Binding DesktopLabel}">
+                                            <ui:SymbolIcon Symbol="DesktopArrowRight24" FontSize="16" Filled="{Binding OnDesktop}"
+                                                           Foreground="{DynamicResource MutedBrush}" />
+                                        </ui:Button>
+                                        <ui:Button Style="{StaticResource IconButton}" Padding="6" Margin="0"
+                                                   ToolTip="削除" Click="OnDeleteClick"
+                                                   AutomationProperties.Name="{Binding Note.Title, StringFormat=付箋「{0}」を削除}">
+                                            <ui:SymbolIcon Symbol="Dismiss24" FontSize="16" Foreground="{DynamicResource MutedBrush}" />
+                                        </ui:Button>
+                                    </StackPanel>
                                     <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Note.Body}" FontSize="13"
                                                TextWrapping="Wrap" Margin="0,6,8,8" Foreground="{DynamicResource TextBrush}" />
                                     <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding DateText}" FontSize="11"

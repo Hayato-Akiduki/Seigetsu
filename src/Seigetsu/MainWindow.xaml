@@ -15,9 +15,9 @@
                  PreviewKeyDown="OnPreviewKeyDown">
 
     <ui:FluentWindow.Resources>
-        <!-- 左メニューの 1 項目 -->
+        <!-- 左メニューの 1 項目。色は外観に合わせて変わる -->
         <Style x:Key="NavItemStyle" TargetType="ListBoxItem">
-            <Setter Property="Foreground" Value="{StaticResource SidebarTextBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource SidebarTextBrush}" />
             <Setter Property="Margin" Value="0,2" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -28,18 +28,18 @@
                             <Grid>
                                 <Border x:Name="Indicator" Width="3" Height="18" CornerRadius="2"
                                         Margin="-10,0,0,0" HorizontalAlignment="Left"
-                                        Background="{StaticResource MoonBrush}" Visibility="Collapsed" />
+                                        Background="{DynamicResource MoonBrush}" Visibility="Collapsed" />
                                 <ContentPresenter />
                             </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SidebarHoverBrush}" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SidebarHoverBrush}" />
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SidebarActiveBrush}" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SidebarActiveBrush}" />
                                 <Setter TargetName="Indicator" Property="Visibility" Value="Visible" />
-                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Foreground" Value="{DynamicResource SidebarStrongBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -51,29 +51,40 @@
     <!-- WPF-UI が窓の背景を上書きするので、霽月の背景色は中身の側で塗る -->
     <Grid Background="{DynamicResource BgBrush}">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="232" />
+            <!-- 左メニューの幅。閉じるとアイコンだけの細い幅になる（MainWindow.xaml.cs の ApplySidebar） -->
+            <ColumnDefinition x:Name="SidebarColumn" Width="232" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
         <!-- 左メニュー -->
-        <Border Background="{StaticResource SidebarBrush}">
+        <Border Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource SidebarLineBrush}"
+                BorderThickness="0,0,1,0">
             <DockPanel Margin="14,44,14,16">
-                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="10,0,0,26">
-                    <ui:SymbolIcon Symbol="WeatherMoon24" Filled="True" FontSize="32"
-                                   Foreground="{StaticResource MoonBrush}" />
-                    <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                        <TextBlock Text="霽 月" FontSize="20" FontWeight="Bold" Foreground="{StaticResource MoonBrush}" />
-                        <TextBlock Text="SEIGETSU" FontSize="10" FontWeight="Bold"
-                                   Foreground="{StaticResource SidebarMutedBrush}" />
+                <!-- 開閉ボタンとロゴ -->
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,22">
+                    <ui:Button x:Name="SidebarToggle" Appearance="Transparent" BorderThickness="0" Padding="13,10"
+                               Cursor="Hand" Click="OnSidebarToggleClick" VerticalAlignment="Center"
+                               ToolTip="メニューを閉じる（Ctrl+B）" AutomationProperties.Name="メニューを閉じる">
+                        <ui:SymbolIcon x:Name="SidebarToggleIcon" Symbol="PanelLeftContract24" FontSize="20"
+                                       Foreground="{DynamicResource SidebarTextBrush}" />
+                    </ui:Button>
+                    <StackPanel x:Name="Logo" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
+                        <ui:SymbolIcon Symbol="WeatherMoon24" Filled="True" FontSize="30"
+                                       Foreground="{DynamicResource MoonBrush}" />
+                        <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="霽 月" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource MoonBrush}" />
+                            <TextBlock Text="SEIGETSU" FontSize="10" FontWeight="Bold"
+                                       Foreground="{DynamicResource SidebarMutedBrush}" />
+                        </StackPanel>
                     </StackPanel>
                 </StackPanel>
 
                 <TextBlock x:Name="VersionText" DockPanel.Dock="Bottom" Margin="10,0,0,0"
-                           FontSize="11" Foreground="{StaticResource SidebarMutedBrush}" />
+                           FontSize="11" Foreground="{DynamicResource SidebarMutedBrush}" />
 
                 <!-- 小さなタイマー。どの画面からでも開始・一時停止でき、時間を押すとタイマー画面へ移る -->
-                <Border DockPanel.Dock="Bottom" Background="{StaticResource SidebarActiveBrush}" CornerRadius="12"
-                        Margin="0,0,0,12" Padding="14,8,6,8">
+                <Border x:Name="MiniBox" DockPanel.Dock="Bottom" Background="{DynamicResource SidebarActiveBrush}"
+                        CornerRadius="12" Margin="0,0,0,12" Padding="14,8,6,8">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -85,39 +96,49 @@
                         </Grid.RowDefinitions>
                         <!-- 再生中の BGM（押すと BGM 画面へ） -->
                         <TextBlock x:Name="MiniMusic" Grid.Row="1" Grid.ColumnSpan="2" FontSize="11" Margin="0,2,8,0"
-                                   Foreground="{StaticResource SidebarMutedBrush}" TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource SidebarMutedBrush}" TextTrimming="CharacterEllipsis"
                                    Cursor="Hand" Visibility="Collapsed" ToolTip="BGM 画面を開く"
                                    MouseLeftButtonUp="OnMiniMusicClick" />
-                        <StackPanel Cursor="Hand" Background="Transparent" MouseLeftButtonUp="OnMiniTimerClick"
-                                    ToolTip="タイマー画面を開く">
-                            <TextBlock x:Name="MiniStatus" FontSize="11" Foreground="{StaticResource SidebarMutedBrush}"
+                        <StackPanel x:Name="MiniText" Cursor="Hand" Background="Transparent"
+                                    MouseLeftButtonUp="OnMiniTimerClick" ToolTip="タイマー画面を開く">
+                            <TextBlock x:Name="MiniStatus" FontSize="11" Foreground="{DynamicResource SidebarMutedBrush}"
                                        TextTrimming="CharacterEllipsis" />
-                            <TextBlock x:Name="MiniTime" FontSize="20" FontWeight="Bold" Foreground="White"
+                            <TextBlock x:Name="MiniTime" FontSize="20" FontWeight="Bold"
+                                       Foreground="{DynamicResource SidebarStrongBrush}"
                                        FontFamily="Cascadia Mono, Consolas" />
                         </StackPanel>
-                        <ui:Button Grid.Column="1" Appearance="Transparent" BorderThickness="0" Padding="8"
-                                   VerticalAlignment="Center" Cursor="Hand" Click="OnMiniToggleClick"
+                        <ui:Button x:Name="MiniButton" Grid.Column="1" Appearance="Transparent" BorderThickness="0"
+                                   Padding="8" VerticalAlignment="Center" Cursor="Hand" Click="OnMiniToggleClick"
                                    ToolTip="開始・一時停止" AutomationProperties.Name="タイマーの開始・一時停止">
                             <ui:SymbolIcon x:Name="MiniIcon" Symbol="Play24" Filled="True" FontSize="20"
-                                           Foreground="White" />
+                                           Foreground="{DynamicResource SidebarStrongBrush}" />
                         </ui:Button>
                     </Grid>
                 </Border>
 
-                <ListBox x:Name="NavList"
+                <!-- Tag が "collapsed" のときは、項目の名前を隠してアイコンだけにする -->
+                <ListBox x:Name="NavList" Tag="expanded"
                          Background="Transparent" BorderThickness="0" Padding="0"
                          ItemContainerStyle="{StaticResource NavItemStyle}"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          SelectionChanged="OnNavSelectionChanged">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel Orientation="Horizontal">
+                            <StackPanel x:Name="Row" Orientation="Horizontal" Background="Transparent">
                                 <ui:SymbolIcon Symbol="{Binding Icon}" FontSize="18"
                                                Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
-                                <TextBlock Text="{Binding Label}" Margin="12,0,0,0" FontSize="14"
+                                <TextBlock x:Name="NavLabel" Text="{Binding Label}" Margin="12,0,0,0" FontSize="14"
                                            VerticalAlignment="Center"
                                            Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
                             </StackPanel>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                             Value="collapsed">
+                                    <Setter TargetName="NavLabel" Property="Visibility" Value="Collapsed" />
+                                    <!-- 名前が見えないので、マウスを乗せると出す -->
+                                    <Setter TargetName="Row" Property="ToolTip" Value="{Binding Label}" />
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
