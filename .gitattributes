@@ -1,0 +1,10 @@
+# 改行はすべて LF にそろえる（Windows の自動変換 core.autocrlf より、こちらが優先される）
+* text=auto eol=lf
+
+# 画像などは変換しない
+*.ico binary
+*.png binary
+*.jpg binary
+*.mp3 binary
+*.wav binary
+*.ogg binary

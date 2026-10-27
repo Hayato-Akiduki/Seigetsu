@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 using Seigetsu.Data;
+using Seigetsu.Services;
 using Wpf.Ui.Controls;
 
 namespace Seigetsu.Dialogs;
@@ -19,10 +20,31 @@ public partial class StickyDialog : FluentWindow
         SaveButton.Content = _editing ? "保存" : "追加";
         TitleBox.Text = note?.Title ?? "";
         BodyBox.Text = note?.Body ?? "";
+
+        // 色の丸を並べる。編集のときは今の色、新しい付箋は黄色から
+        ResultColor = note is null ? 0 : ThemeService.StickyColorOf(note);
+        for (var i = 0; i < ThemeService.StickyColorCount; i++)
+        {
+            var index = i;
+            var swatch = new System.Windows.Controls.RadioButton
+            {
+                Style = (Style)FindResource("ColorSwatch"),
+                Background = ThemeService.StickyBrushAt(i),
+                GroupName = "StickyColor",
+                IsChecked = i == ResultColor,
+                ToolTip = ThemeService.StickyColorName(i),
+            };
+            System.Windows.Automation.AutomationProperties.SetName(swatch, $"{ThemeService.StickyColorName(i)}色");
+            swatch.Checked += (_, _) => ResultColor = index;
+            ColorPanel.Children.Add(swatch);
+        }
     }
 
     public string ResultTitle { get; private set; } = "";
     public string ResultBody { get; private set; } = "";
+
+    /// <summary>選んだ色の番号。</summary>
+    public int ResultColor { get; private set; }
 
     // 編集のときはすぐ内容を書けるように、内容の欄から始める（v6 と同じ）
     private void OnLoaded(object sender, RoutedEventArgs e)

@@ -26,12 +26,53 @@ public partial class HomePage : UserControl, IRefreshable
     {
         UpdateClock();
         _clock.Start();
+        App.Weather.Changed += UpdateWeather;
         Refresh();
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e) => _clock.Stop();
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        _clock.Stop();
+        App.Weather.Changed -= UpdateWeather;
+    }
 
-    private void OnBigClockClick(object sender, RoutedEventArgs e) => ((MainWindow)Window.GetWindow(this)).ShowBigClock();
+    private MainWindow Main => (MainWindow)Window.GetWindow(this);
+
+    private void UpdateWeather()
+    {
+        var weather = App.Weather;
+        WeatherRefreshButton.IsEnabled = weather.Status != WeatherStatus.Loading;
+        switch (weather.Status)
+        {
+            case WeatherStatus.Loading:
+                WeatherDetail.Text = "確認しています…";
+                break;
+            case WeatherStatus.Error:
+                WeatherIcon.Symbol = Wpf.Ui.Controls.SymbolRegular.Warning24;
+                WeatherTitle.Text = "天気を取得できませんでした";
+                WeatherDetail.Text = weather.Message;
+                break;
+            case WeatherStatus.Ok when weather.Current is { } w:
+                WeatherIcon.Symbol = w.Icon;
+                WeatherTitle.Text = $"{w.Place}　{w.Text}";
+                WeatherDetail.Text = $"気温 {Number(w.Temperature)}℃ ・ 風速 {Number(w.Wind)} km/h";
+                break;
+        }
+    }
+
+    private static string Number(double? value) => value?.ToString("0.#", CultureInfo.InvariantCulture) ?? "―";
+
+    private async void OnWeatherRefreshClick(object sender, RoutedEventArgs e) => await App.Weather.RefreshAsync();
+
+    private void OnCalculatorClick(object sender, RoutedEventArgs e) => Main.OpenCalculator();
+
+    private void OnCounterClick(object sender, RoutedEventArgs e) => Main.OpenCharCounter();
+
+    private void OnScreenshotClick(object sender, RoutedEventArgs e) => Main.TakeScreenshot();
+
+    private void OnNewStickyClick(object sender, RoutedEventArgs e) => Main.OpenStickyDialog();
+
+    private void OnBigClockClick(object sender, RoutedEventArgs e) => Main.ShowBigClock();
 
     private void UpdateClock()
     {
@@ -55,9 +96,46 @@ public partial class HomePage : UserControl, IRefreshable
         TodayWorkText.Text = Format.Duration(db.WorkSecondsToday());
         TotalWorkText.Text = Format.Duration(db.WorkSecondsSince());
 
+        UpdateWeather();
+        UpdateBanner();
+
         var rows = db.TodayTasks().Select(ToRow).ToList();
         TaskList.ItemsSource = rows;
         NoTasksText.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private string? _bannerPath;
+
+    /// <summary>背景画像を選んでいれば見出しに敷く。選んでいなければ、ふつうの見出しに戻す。</summary>
+    private void UpdateBanner()
+    {
+        var path = BackgroundImage.CurrentPath;
+        // 同じ画像なら読み直さない（データが変わるたびに呼ばれるので）
+        if (path != _bannerPath || (path is not null && Banner.Background is null))
+        {
+            _bannerPath = path;
+            var image = path is null ? null : BackgroundImage.Load(path);
+            Banner.Background = image is null ? null : new ImageBrush(image) { Stretch = Stretch.UniformToFill };
+        }
+
+        var hasImage = Banner.Background is not null;
+        BannerShade.Visibility = hasImage ? Visibility.Visible : Visibility.Collapsed;
+        BannerContent.Margin = hasImage ? new Thickness(30, 30, 24, 30) : new Thickness(0);
+        if (hasImage)
+        {
+            // 暗くした画像の上なので、外観にかかわらず白い文字
+            GreetingText.Foreground = Brushes.White;
+            ClockText.Foreground = Brushes.White;
+            DateText.Foreground = new SolidColorBrush(Color.FromRgb(0xDC, 0xE6, 0xF7));
+            BigClockIcon.Foreground = new SolidColorBrush(Color.FromRgb(0xDC, 0xE6, 0xF7));
+        }
+        else
+        {
+            GreetingText.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
+            ClockText.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
+            DateText.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+            BigClockIcon.SetResourceReference(Wpf.Ui.Controls.SymbolIcon.ForegroundProperty, "MutedBrush");
+        }
     }
 
     private static TaskRow ToRow(TaskItem task) => new(

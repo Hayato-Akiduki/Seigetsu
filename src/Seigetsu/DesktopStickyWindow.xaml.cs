@@ -50,7 +50,7 @@ public partial class DesktopStickyWindow : Window
         Title = $"付箋「{note.Title}」";
         TitleText.Text = note.Title;
         BodyText.Text = note.Body;
-        Root.Background = ThemeService.StickyBrush(note.Id);
+        Root.Background = ThemeService.StickyBrush(note);
         Root.BorderBrush = ThemeService.Brush("LineBrush");
     }
 

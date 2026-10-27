@@ -1,0 +1,31 @@
+<ui:FluentWindow x:Class="Seigetsu.Dialogs.CharCounterWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 Title="文字数カウンター" Width="620" Height="480" MinWidth="460" MinHeight="340"
+                 WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+                 ExtendsContentIntoTitleBar="True" WindowBackdropType="None"
+                 FontFamily="{StaticResource AppFont}"
+                 Loaded="OnLoaded" PreviewKeyDown="OnPreviewKeyDown">
+    <Grid Background="{DynamicResource BgBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar Title="文字数カウンター" ShowMinimize="False" />
+
+        <TextBox x:Name="Box" Grid.Row="1" Margin="16,0,16,8" FontSize="14"
+                 AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
+                 VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
+                 TextChanged="OnTextChanged" AutomationProperties.Name="数える文章" />
+
+        <Grid Grid.Row="2" Margin="18,0,16,14">
+            <TextBlock x:Name="ResultText" FontSize="15" FontWeight="Bold" VerticalAlignment="Center"
+                       Foreground="{DynamicResource TextBrush}" />
+            <ui:Button HorizontalAlignment="Right" Content="クリア" Icon="{ui:SymbolIcon Delete24}"
+                       Padding="12,6" Click="OnClearClick" />
+        </Grid>
+    </Grid>
+</ui:FluentWindow>

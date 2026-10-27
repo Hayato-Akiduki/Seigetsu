@@ -39,6 +39,9 @@ public partial class MainWindow : FluentWindow
     // タイマーの表示更新とフェーズ終了の確認（v6 と同じ 0.5 秒ごと）
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(500) };
 
+    // 1 日 1 回の仕事（自動バックアップと締切の通知）。起動の 5 秒後と、その後 10 分ごとに「今日はもう済んだか」を見る
+    private readonly DispatcherTimer _daily = new() { Interval = TimeSpan.FromSeconds(5) };
+
     private bool? _miniRunning;
 
     private readonly TrayIcon _tray;
@@ -57,6 +60,12 @@ public partial class MainWindow : FluentWindow
         ApplySidebar(App.Database.GetSetting(SettingKeys.SidebarCollapsed, "0") == "1");
 
         _tick.Tick += (_, _) => OnTick();
+        _daily.Tick += (_, _) =>
+        {
+            _daily.Interval = TimeSpan.FromMinutes(10);
+            RunDailyJobs();
+        };
+        _daily.Start();
         _tick.Start();
         // 曲が終わって次の曲に進んだときなど、どの画面にいても小さな表示を合わせる
         App.Player.StateChanged += UpdateMiniTimer;
@@ -188,12 +197,14 @@ public partial class MainWindow : FluentWindow
         if (note is null)
         {
             var id = App.Database.AddSticky(dialog.ResultTitle, dialog.ResultBody);
+            App.Database.SetStickyColor(id, dialog.ResultColor);
             onAdded?.Invoke(id);
             Notify("付箋を追加しました。");
         }
         else
         {
             App.Database.UpdateSticky(note.Id, dialog.ResultTitle, dialog.ResultBody);
+            App.Database.SetStickyColor(note.Id, dialog.ResultColor);
             Notify("付箋を更新しました。");
         }
         DataChanged();
@@ -230,6 +241,112 @@ public partial class MainWindow : FluentWindow
         _clock = new ClockWindow(this);
         _clock.Closed += (_, _) => _clock = null;
         _clock.Show();
+    }
+
+    // ---- 1 日 1 回の仕事 ---------------------------------------------------
+    private void RunDailyJobs()
+    {
+        try
+        {
+            if (DailyBackup.RunIfNeeded(App.Database))
+                DataChanged(); // 設定画面を開いていれば「いちばん新しいバックアップ」を直す
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException
+                                          or Microsoft.Data.Sqlite.SqliteException)
+        {
+            // バックアップできなくても、アプリはそのまま使えるようにする（理由は記録しておく）
+            try
+            {
+                File.AppendAllText(AppPaths.ErrorLogPath,
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] 自動バックアップ: {error}{Environment.NewLine}{Environment.NewLine}");
+            }
+            catch (IOException)
+            {
+            }
+        }
+        RemindDueTasks();
+    }
+
+    /// <summary>
+    /// 今日が締切のタスクや期限切れのタスクがあれば、1 日 1 回 Windows の通知で知らせる。
+    /// その日の分を知らせたら、次の日まで知らせない。
+    /// </summary>
+    private void RemindDueTasks()
+    {
+        var db = App.Database;
+        if (db.GetSetting(SettingKeys.DueNotify, "1") != "1")
+            return;
+        var today = DateTime.Today.ToString("yyyy-MM-dd");
+        if (db.GetSetting(SettingKeys.DueNotifiedOn, "") == today)
+            return;
+        var (overdue, dueToday) = db.DueCounts();
+        if (overdue + dueToday == 0)
+            return;
+
+        var parts = new List<string>();
+        if (dueToday > 0)
+            parts.Add($"今日が締切のタスクが {dueToday} 件");
+        if (overdue > 0)
+            parts.Add($"期限切れのタスクが {overdue} 件");
+        var message = string.Join("、", parts) + "あります。";
+        _tray.Notify("霽月 - タスクの締切", message);
+        if (IsVisible)
+            Notify(message, ControlAppearance.Info, 8);
+        db.SetSetting(SettingKeys.DueNotifiedOn, today);
+    }
+
+    /// <summary>
+    /// スクリーンショットを撮る（v6 と同じく、霽月の窓をいったん隠して、隠れきってから撮る）。
+    /// </summary>
+    public async void TakeScreenshot()
+    {
+        var wasVisible = IsVisible;
+        Hide();
+        await Task.Delay(400);
+        string? path = null;
+        string? error = null;
+        try
+        {
+            path = Screenshot.Capture();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception
+                                      or System.Runtime.InteropServices.ExternalException or ArgumentException)
+        {
+            error = e.Message;
+        }
+        if (wasVisible)
+            ShowFromTray();
+        if (path is not null)
+            Notify($"スクリーンショットを保存しました。\n{path}", seconds: 5);
+        else
+            Notify($"スクリーンショットを保存できませんでした。\n{error}", ControlAppearance.Danger, 6);
+    }
+
+    private CalculatorWindow? _calculator;
+    private CharCounterWindow? _counter;
+
+    /// <summary>電卓を開く（もう開いていれば前に出すだけ）。</summary>
+    public void OpenCalculator()
+    {
+        if (_calculator is null)
+        {
+            _calculator = new CalculatorWindow { Owner = this };
+            _calculator.Closed += (_, _) => _calculator = null;
+            _calculator.Show();
+        }
+        _calculator.Activate();
+    }
+
+    /// <summary>文字数カウンターを開く（もう開いていれば前に出すだけ）。</summary>
+    public void OpenCharCounter()
+    {
+        if (_counter is null)
+        {
+            _counter = new CharCounterWindow { Owner = this };
+            _counter.Closed += (_, _) => _counter = null;
+            _counter.Show();
+        }
+        _counter.Activate();
     }
 
     /// <summary>タスクと作業記録を CSV に書き出す（分析画面と設定画面から）。</summary>
@@ -391,6 +508,7 @@ public partial class MainWindow : FluentWindow
         App.Timer.Reset();
         App.DesktopStickies.CloseAll(); // 出していた付箋は、次に起動したときにまた出る
         _tick.Stop();
+        _daily.Stop();
         App.Player.StateChanged -= UpdateMiniTimer;
         App.Player.Dispose();
         _tray.Dispose();

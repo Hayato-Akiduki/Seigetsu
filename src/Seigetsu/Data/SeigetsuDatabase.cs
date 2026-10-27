@@ -5,7 +5,8 @@ namespace Seigetsu.Data;
 public sealed record TaskItem(
     long Id, string Title, bool Completed, string Priority, string DueDate, string Category, bool Favorite);
 
-public sealed record StickyNote(long Id, string Title, string Body, string CreatedAt);
+/// <summary>付箋 1 枚。Color は選んだ色の番号（選んでいなければ null で、id から色を決める）。</summary>
+public sealed record StickyNote(long Id, string Title, string Body, string CreatedAt, int? Color = null);
 
 /// <summary>掲示板に貼ったもの 1 枚。Kind は "memo" / "sticky" / "task"、RefId はその id（メモは 1）。</summary>
 /// <summary>デスクトップに出している付箋 1 枚の、窓の位置と大きさ。</summary>
@@ -166,6 +167,12 @@ public sealed class SeigetsuDatabase
                 z INTEGER NOT NULL DEFAULT 0,
                 UNIQUE (kind, ref_id))
             """);
+        // 付箋の色（v7 で追加）。v6 の sticky_notes の表は変えずに、別の表に持つ
+        Run("""
+            CREATE TABLE IF NOT EXISTS sticky_colors (
+                sticky_id INTEGER PRIMARY KEY,
+                color INTEGER NOT NULL)
+            """);
         // デスクトップに出している付箋（v7 で追加）
         Run("""
             CREATE TABLE IF NOT EXISTS desktop_stickies (
@@ -304,6 +311,38 @@ public sealed class SeigetsuDatabase
         return counts;
     }
 
+    /// <summary>締切の通知用: 未完了のタスクのうち、(期限切れの数, 今日が締切の数)。</summary>
+    public (int Overdue, int Today) DueCounts()
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT COALESCE(SUM(due_date < $today), 0), COALESCE(SUM(due_date = $today), 0)
+            FROM tasks WHERE completed = 0 AND due_date <> ''
+            """;
+        command.Parameters.AddWithValue("$today", Today);
+        using var reader = command.ExecuteReader();
+        reader.Read();
+        return (reader.GetInt32(0), reader.GetInt32(1));
+    }
+
+    /// <summary>
+    /// データベースを丸ごと別のファイルに写す（SQLite のバックアップの仕組みを使うので、使っている最中でも壊れずに写せる）。
+    /// </summary>
+    public void BackupTo(string path)
+    {
+        using var source = Open();
+        // 写し先は使い終わったらすぐ閉じたいので、つなぎっぱなしにしない
+        using var target = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = path,
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            Pooling = false,
+        }.ToString());
+        target.Open();
+        source.BackupDatabase(target);
+    }
+
     /// <summary>(未完了の数, 全部の数)</summary>
     public (int Open, int Total) TaskCounts()
     {
@@ -389,18 +428,28 @@ public sealed class SeigetsuDatabase
         Execute("DELETE FROM sticky_notes WHERE id = $id", ("$id", id));
         Execute("DELETE FROM board_items WHERE kind = 'sticky' AND ref_id = $id", ("$id", id));
         Execute("DELETE FROM desktop_stickies WHERE sticky_id = $id", ("$id", id));
+        Execute("DELETE FROM sticky_colors WHERE sticky_id = $id", ("$id", id));
     }
+
+    public void SetStickyColor(long id, int color) =>
+        Execute("INSERT OR REPLACE INTO sticky_colors (sticky_id, color) VALUES ($id, $color)",
+            ("$id", id), ("$color", color));
 
     /// <summary>新しい順（v6 と同じ）。</summary>
     public IReadOnlyList<StickyNote> GetStickies()
     {
         using var connection = Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, title, body, created_at FROM sticky_notes ORDER BY id DESC";
+        command.CommandText = """
+            SELECT s.id, s.title, s.body, s.created_at, c.color
+            FROM sticky_notes s LEFT JOIN sticky_colors c ON c.sticky_id = s.id
+            ORDER BY s.id DESC
+            """;
         var notes = new List<StickyNote>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
-            notes.Add(new StickyNote(reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+            notes.Add(new StickyNote(reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetInt32(4)));
         return notes;
     }
 

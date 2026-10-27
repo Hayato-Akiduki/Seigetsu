@@ -22,6 +22,9 @@ public partial class App : Application
     /// <summary>デスクトップに出している付箋の窓。</summary>
     public static DesktopStickies DesktopStickies { get; private set; } = null!;
 
+    /// <summary>天気（ホームに出す）。</summary>
+    public static WeatherService Weather { get; private set; } = null!;
+
     private SingleInstance? _instance;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -53,11 +56,13 @@ public partial class App : Application
 
         Updates = new UpdateService();
         DesktopStickies = new DesktopStickies();
+        Weather = new WeatherService();
 
         var main = new MainWindow();
         main.Show();
         // 前回デスクトップに出していた付箋を、同じ場所に出し直す
         DesktopStickies.Refresh();
+        Weather.Start();
         _instance.ListenForShow(Dispatcher, main.ShowFromTray);
         Updates.Start(Dispatcher);
 

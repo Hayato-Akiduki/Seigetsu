@@ -30,7 +30,7 @@ public partial class StickiesPage : UserControl, IRefreshable
         SubtitleText.Text = notes.Count > 0 ? $"{notes.Count}枚 ・ クリックで編集できます ・ 右上のボタンでデスクトップに表示できます" : "";
         Board.ItemsSource = notes.Select(n => new StickyView(
             n,
-            ThemeService.StickyBrush(n.Id),
+            ThemeService.StickyBrush(n),
             // 2026-10-27T09:47:31 → 2026-10-27 09:47（v6 と同じ）
             n.CreatedAt.Length >= 16 ? n.CreatedAt[..16].Replace('T', ' ') : n.CreatedAt,
             App.DesktopStickies.IsShown(n.Id))).ToList();

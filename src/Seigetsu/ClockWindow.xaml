@@ -5,36 +5,36 @@
         Title="霽月 - 時計"
         WindowStyle="None" ResizeMode="NoResize" WindowState="Maximized"
         WindowStartupLocation="Manual" ShowInTaskbar="False"
-        Background="#0E1524" FontFamily="{StaticResource AppFont}"
+        Background="#000000" FontFamily="{StaticResource AppFont}"
         Loaded="OnLoaded" Closed="OnClosed"
         KeyDown="OnKeyDown" MouseDoubleClick="OnDoubleClick" MouseMove="OnMouseMove">
-    <!-- 大画面の時計。外観の設定にかかわらず、夜空のような暗い色で出す -->
+    <!-- 大画面の時計。外観の設定にかかわらず、黒と青で出す -->
     <Grid>
         <Viewbox Margin="80,60">
             <StackPanel HorizontalAlignment="Center">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                    <ui:SymbolIcon Symbol="WeatherMoon24" Filled="True" FontSize="30" Foreground="#F3E7B8"
+                    <ui:SymbolIcon Symbol="WeatherMoon24" Filled="True" FontSize="30" Foreground="#5B9BFF"
                                    VerticalAlignment="Center" />
-                    <TextBlock x:Name="DateText" FontSize="30" Foreground="#9CAAC0" Margin="12,0,0,0"
+                    <TextBlock x:Name="DateText" FontSize="30" Foreground="#A0A6B2" Margin="12,0,0,0"
                                VerticalAlignment="Center" />
                 </StackPanel>
 
                 <!-- 数字の幅をそろえて、時刻が変わっても大きさが揺れないようにする -->
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,-10,0,0">
-                    <TextBlock x:Name="TimeText" FontSize="220" FontWeight="Light" Foreground="#E6ECF6"
+                    <TextBlock x:Name="TimeText" FontSize="220" FontWeight="Light" Foreground="#FFFFFF"
                                FontFamily="Segoe UI" Typography.NumeralAlignment="Tabular" />
-                    <TextBlock x:Name="SecondsText" FontSize="72" FontWeight="Light" Foreground="#8D9BB6"
+                    <TextBlock x:Name="SecondsText" FontSize="72" FontWeight="Light" Foreground="#8E95A3"
                                FontFamily="Segoe UI" Typography.NumeralAlignment="Tabular"
                                VerticalAlignment="Bottom" Margin="18,0,0,46" />
                 </StackPanel>
 
                 <!-- 集中タイマーが動いているときだけ出す（消すときも場所は残し、時計の大きさを変えない） -->
-                <TextBlock x:Name="TimerText" FontSize="34" Foreground="#F3E7B8" HorizontalAlignment="Center"
+                <TextBlock x:Name="TimerText" FontSize="34" Foreground="#5B9BFF" HorizontalAlignment="Center"
                            Margin="0,-6,0,0" Visibility="Hidden" />
             </StackPanel>
         </Viewbox>
 
-        <TextBlock x:Name="HintText" Text="Esc キー・ダブルクリックで閉じる" FontSize="14" Foreground="#8D9BB6"
+        <TextBlock x:Name="HintText" Text="Esc キー・ダブルクリックで閉じる" FontSize="14" Foreground="#8E95A3"
                    HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,28" />
     </Grid>
 </Window>

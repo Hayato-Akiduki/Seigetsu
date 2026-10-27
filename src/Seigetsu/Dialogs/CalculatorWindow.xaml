@@ -1,0 +1,32 @@
+<ui:FluentWindow x:Class="Seigetsu.Dialogs.CalculatorWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 Title="電卓" Width="340" Height="500" ResizeMode="NoResize"
+                 WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+                 ExtendsContentIntoTitleBar="True" WindowBackdropType="None"
+                 FontFamily="{StaticResource AppFont}"
+                 Loaded="OnLoaded" PreviewKeyDown="OnPreviewKeyDown">
+    <Grid Background="{DynamicResource BgBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar Title="電卓" ShowMinimize="False" ShowMaximize="False" />
+
+        <DockPanel Grid.Row="1" Margin="16,0,16,16">
+            <!-- 前の式（= を押したあとに出す） -->
+            <TextBlock x:Name="HistoryText" DockPanel.Dock="Top" Style="{StaticResource Muted}" FontSize="12"
+                       HorizontalAlignment="Right" Margin="0,0,4,2" MinHeight="16"
+                       FontFamily="Cascadia Mono, Consolas" />
+            <TextBox x:Name="ExpressionBox" DockPanel.Dock="Top" FontSize="26" Height="58"
+                     FontFamily="Cascadia Mono, Consolas" HorizontalContentAlignment="Right"
+                     VerticalContentAlignment="Center" AutomationProperties.Name="計算する式" />
+            <TextBlock x:Name="MessageText" DockPanel.Dock="Top" Style="{StaticResource Muted}" FontSize="11"
+                       Margin="2,6,0,6" Text="キーボードでも入力できます（Enter で計算、Esc で閉じる）" />
+            <!-- ボタンは OnLoaded で並べる -->
+            <UniformGrid x:Name="Keys" Rows="5" Columns="4" />
+        </DockPanel>
+    </Grid>
+</ui:FluentWindow>

@@ -11,28 +11,28 @@
 
             <!-- 左メニューの色。外観に合わせて ThemeService が差し替える -->
             <SolidColorBrush x:Key="SidebarBrush" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="SidebarLineBrush" Color="#DCE3EE" />
-            <SolidColorBrush x:Key="SidebarTextBrush" Color="#3A4760" />
-            <SolidColorBrush x:Key="SidebarMutedBrush" Color="#5D6B82" />
-            <SolidColorBrush x:Key="SidebarStrongBrush" Color="#1B2840" />
-            <SolidColorBrush x:Key="SidebarActiveBrush" Color="#E3EBFA" />
-            <SolidColorBrush x:Key="SidebarHoverBrush" Color="#EEF2F8" />
-            <SolidColorBrush x:Key="MoonBrush" Color="#A8741A" />
+            <SolidColorBrush x:Key="SidebarLineBrush" Color="#DDE5F2" />
+            <SolidColorBrush x:Key="SidebarTextBrush" Color="#33415C" />
+            <SolidColorBrush x:Key="SidebarMutedBrush" Color="#5B6B86" />
+            <SolidColorBrush x:Key="SidebarStrongBrush" Color="#1D4ED8" />
+            <SolidColorBrush x:Key="SidebarActiveBrush" Color="#E6EEFD" />
+            <SolidColorBrush x:Key="SidebarHoverBrush" Color="#F1F5FC" />
+            <SolidColorBrush x:Key="MoonBrush" Color="#2563EB" />
 
             <!-- 外観で変わる色。ThemeService が明るい／暗いに合わせて差し替える -->
-            <SolidColorBrush x:Key="BgBrush" Color="#EEF2F8" />
+            <SolidColorBrush x:Key="BgBrush" Color="#F3F6FC" />
             <SolidColorBrush x:Key="CardBrush" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="LineBrush" Color="#DCE3EE" />
-            <SolidColorBrush x:Key="TextBrush" Color="#1B2840" />
-            <SolidColorBrush x:Key="MutedBrush" Color="#5D6B82" />
-            <SolidColorBrush x:Key="AccentBrush" Color="#3B66C4" />
-            <SolidColorBrush x:Key="SubtleBrush" Color="#E8EEF8" />
+            <SolidColorBrush x:Key="LineBrush" Color="#DDE5F2" />
+            <SolidColorBrush x:Key="TextBrush" Color="#14213D" />
+            <SolidColorBrush x:Key="MutedBrush" Color="#5B6B86" />
+            <SolidColorBrush x:Key="AccentBrush" Color="#2563EB" />
+            <SolidColorBrush x:Key="SubtleBrush" Color="#EAF1FD" />
             <SolidColorBrush x:Key="DangerBrush" Color="#C94A4A" />
             <SolidColorBrush x:Key="WarningBrush" Color="#B7791F" />
             <SolidColorBrush x:Key="SuccessBrush" Color="#2E8B62" />
             <SolidColorBrush x:Key="SegSelectedBrush" Color="#FFFFFF" />
             <SolidColorBrush x:Key="OnAccentBrush" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="ChartBarBrush" Color="#3B66C4" />
+            <SolidColorBrush x:Key="ChartBarBrush" Color="#2563EB" />
 
             <FontFamily x:Key="AppFont">Yu Gothic UI, Meiryo UI, Segoe UI</FontFamily>
 

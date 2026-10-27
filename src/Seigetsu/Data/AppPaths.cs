@@ -31,4 +31,6 @@ public static class SettingKeys
     public const string CloseAction = "close_action";     // quit / tray
     public const string Volume = "music_volume";
     public const string SidebarCollapsed = "sidebar_collapsed"; // 1 / 0（v7 だけの設定）
+    public const string DueNotify = "due_notify";               // 1 / 0 締切の通知（v7 だけの設定）
+    public const string DueNotifiedOn = "due_notified_on";      // 締切を最後に知らせた日（yyyy-MM-dd）
 }

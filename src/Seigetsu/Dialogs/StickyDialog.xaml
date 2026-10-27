@@ -7,6 +7,38 @@
                  ExtendsContentIntoTitleBar="True" WindowBackdropType="None"
                  FontFamily="{StaticResource AppFont}"
                  Loaded="OnLoaded" PreviewKeyDown="OnPreviewKeyDown">
+    <ui:FluentWindow.Resources>
+        <!-- 色を選ぶ丸。選んでいる色には、まわりに青い輪とチェックが付く -->
+        <Style x:Key="ColorSwatch" TargetType="RadioButton">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Grid Width="34" Height="34" Background="Transparent">
+                            <Ellipse x:Name="Ring" Stroke="{DynamicResource AccentBrush}" StrokeThickness="2.5"
+                                     Visibility="Hidden" />
+                            <Ellipse Margin="5" Fill="{TemplateBinding Background}"
+                                     Stroke="{DynamicResource LineBrush}" StrokeThickness="1" />
+                            <ui:SymbolIcon x:Name="Check" Symbol="Checkmark24" FontSize="14"
+                                           Foreground="{DynamicResource TextBrush}" Visibility="Hidden" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Ring" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="Check" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Ring" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </ui:FluentWindow.Resources>
+
     <Grid Background="{DynamicResource BgBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -26,6 +58,9 @@
             <TextBox x:Name="BodyBox" AcceptsReturn="True" TextWrapping="Wrap" Height="180"
                      VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
                      AutomationProperties.Name="付箋の内容" />
+
+            <TextBlock Text="色" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+            <StackPanel x:Name="ColorPanel" Orientation="Horizontal" />
 
             <TextBlock x:Name="ErrorText" FontSize="12" Foreground="{DynamicResource DangerBrush}"
                        Margin="0,6,0,0" MinHeight="16" />

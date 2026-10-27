@@ -125,7 +125,7 @@ public partial class BoardPage : UserControl, IRefreshable
                 body = MemoBody();
                 break;
             case "sticky" when _stickies.TryGetValue(item.RefId, out var note):
-                (background, icon, kind) = (ThemeService.StickyBrush(note.Id), SymbolRegular.Note24, "付箋");
+                (background, icon, kind) = (ThemeService.StickyBrush(note), SymbolRegular.Note24, "付箋");
                 name = $"付箋「{note.Title}」";
                 body = StickyBody(note);
                 break;
