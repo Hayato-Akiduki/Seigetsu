@@ -5,19 +5,30 @@
              Loaded="OnLoaded" Unloaded="OnUnloaded">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel>
-            <!-- あいさつと日付・時刻。背景画像を選んでいると、その画像を暗めに敷いて白い文字にする（v6 と同じ） -->
+            <!-- あいさつ（時間がたつと名言などに切り替わる）と日付・時刻。
+                 背景画像を選んでいると、その画像を暗めに敷いて白い文字にする（v6 と同じ） -->
             <Border x:Name="Banner" CornerRadius="16" Margin="0,0,0,22" ClipToBounds="True">
                 <Grid>
                     <!-- 画像の上に重ねる暗い膜（文字を読みやすくする） -->
                     <Border x:Name="BannerShade" Background="#000000" Opacity="0.45" CornerRadius="16"
                             Visibility="Collapsed" />
                     <Grid x:Name="BannerContent">
-                        <StackPanel>
-                            <TextBlock x:Name="GreetingText" Style="{StaticResource PageTitle}" />
-                            <TextBlock x:Name="DateText" Style="{StaticResource Muted}" FontSize="14" Margin="0,4,0,0" />
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,24,0">
+                            <!-- 押すと次のことばに切り替える -->
+                            <StackPanel x:Name="MessagePanel" Background="Transparent" Cursor="Hand"
+                                        ToolTip="押すと次のことばに切り替えます" MouseLeftButtonUp="OnMessageClick">
+                                <TextBlock x:Name="GreetingText" Style="{StaticResource PageTitle}" TextWrapping="Wrap" />
+                                <TextBlock x:Name="SourceText" FontSize="13" Margin="0,2,0,0" Visibility="Collapsed"
+                                           Foreground="{DynamicResource MutedBrush}" />
+                            </StackPanel>
+                            <TextBlock x:Name="DateText" Style="{StaticResource Muted}" FontSize="14" Margin="0,6,0,0" />
                         </StackPanel>
                         <!-- 時刻を押すと、時計を大画面で出す -->
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                             <TextBlock x:Name="ClockText" FontSize="34" FontWeight="Light" VerticalAlignment="Center"
                                        Foreground="{DynamicResource TextBrush}" Cursor="Hand"
                                        ToolTip="時計を大画面で表示（F11）" MouseLeftButtonUp="OnBigClockClick" />
@@ -139,8 +150,8 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- ツール -->
-                    <Border Style="{StaticResource Card}" Margin="0,0,0,16">
+                    <!-- ツール（データの場所は設定画面に出す） -->
+                    <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="ツール" Style="{StaticResource CardTitle}" />
                             <!-- v6 と同じ 4 つ -->
@@ -156,16 +167,6 @@
                                            Margin="4,0,0,0" Padding="10,8" Click="OnNewStickyClick"
                                            ToolTip="新しい付箋を書く" />
                             </UniformGrid>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- データの場所 -->
-                    <Border Style="{StaticResource Card}">
-                        <StackPanel>
-                            <TextBlock Text="データの場所" Style="{StaticResource CardTitle}" Margin="0,0,0,4" />
-                            <TextBlock x:Name="DbPathText" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" />
-                            <TextBlock Text="v6 と同じデータを使っています。"
-                                       Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0" />
                         </StackPanel>
                     </Border>
                 </StackPanel>

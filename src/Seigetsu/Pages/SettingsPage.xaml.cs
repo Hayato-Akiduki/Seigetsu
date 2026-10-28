@@ -28,7 +28,10 @@ public partial class SettingsPage : UserControl, IRefreshable
         Refresh();
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e) => App.Updates.Changed -= UpdateUpdateSection;
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        App.Updates.Changed -= UpdateUpdateSection;
+    }
 
     private void UpdateUpdateSection()
     {
@@ -71,8 +74,23 @@ public partial class SettingsPage : UserControl, IRefreshable
         BackgroundText.Text = background is null ? "設定なし" : Path.GetFileName(background);
         BackgroundText.ToolTip = background;
         ClearBackgroundButton.IsEnabled = background is not null;
+        BackgroundOptions.IsEnabled = background is not null;
+        BackgroundBannerCheck.IsChecked = BackgroundImage.IsShownIn(BackgroundPlace.Banner);
+        BackgroundWindowCheck.IsChecked = BackgroundImage.IsShownIn(BackgroundPlace.Window);
+        BackgroundClockCheck.IsChecked = BackgroundImage.IsShownIn(BackgroundPlace.Clock);
+        var strength = db.GetSetting(SettingKeys.BackgroundStrength, "NORMAL");
+        BackgroundStrengthList.SelectedItem = BackgroundStrengthList.Items.Cast<ListBoxItem>()
+                                                  .FirstOrDefault(i => (string)i.Tag == strength)
+                                              ?? BackgroundStrengthList.Items[1];
 
-        DataPathText.Text = $"保存場所：{AppPaths.DataDir}";
+        FillBannerKinds();
+        var interval = BannerMessages.IntervalSeconds.ToString();
+        BannerIntervalList.SelectedItem = BannerIntervalList.Items.Cast<ListBoxItem>().FirstOrDefault(i => (string)i.Tag == interval)
+                                          ?? BannerIntervalList.Items[1];
+        if (!BannerCustomBox.IsKeyboardFocusWithin)
+            BannerCustomBox.Text = db.GetSetting(SettingKeys.BannerCustom, "");
+
+        DataPathText.Text = $"データベースの場所：{db.Path}（v6 と同じデータを使っています）";
         var backup = db.BackupPath;
         BackupText.Visibility = File.Exists(backup) ? Visibility.Visible : Visibility.Collapsed;
         BackupText.Text = $"v7 を使う前のデータのコピー：{backup}";
@@ -139,15 +157,65 @@ public partial class SettingsPage : UserControl, IRefreshable
             return;
         }
         App.Database.SetSetting(SettingKeys.Background, dialog.FileName);
-        Main.Notify("ホームの背景画像を設定しました。");
-        Refresh();
+        Main.Notify("背景画像を設定しました。");
+        Main.ApplyBackground(); // 表示中のこの画面も作り直される
     }
 
     private void OnClearBackgroundClick(object sender, RoutedEventArgs e)
     {
         App.Database.SetSetting(SettingKeys.Background, "");
-        Main.Notify("ホームの背景画像を解除しました。");
-        Refresh();
+        Main.Notify("背景画像を解除しました。");
+        Main.ApplyBackground();
+    }
+
+    private void OnBackgroundPlaceClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not CheckBox { Tag: string tag } check || !Enum.TryParse<BackgroundPlace>(tag, out var place))
+            return;
+        BackgroundImage.SetShownIn(place, check.IsChecked == true);
+        Main.ApplyBackground();
+    }
+
+    private void OnBackgroundStrengthChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || !IsLoaded || BackgroundStrengthList.SelectedItem is not ListBoxItem item)
+            return;
+        App.Database.SetSetting(SettingKeys.BackgroundStrength, (string)item.Tag);
+        Main.ApplyBackground();
+    }
+
+    // 上帯のことばの種類のチェックを、一覧から作る
+    private void FillBannerKinds()
+    {
+        var enabled = BannerMessages.EnabledKinds;
+        BannerKindsPanel.Children.Clear();
+        foreach (var (key, label) in BannerMessages.Kinds)
+        {
+            var check = new CheckBox
+            {
+                Content = label,
+                IsChecked = enabled.Contains(key),
+                Margin = new Thickness(0, 0, 20, 4),
+            };
+            check.Click += (_, _) => BannerMessages.SetEnabled(key, check.IsChecked == true);
+            BannerKindsPanel.Children.Add(check);
+        }
+    }
+
+    private void OnBannerIntervalChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || !IsLoaded || BannerIntervalList.SelectedItem is not ListBoxItem item)
+            return;
+        App.Database.SetSetting(SettingKeys.BannerInterval, (string)item.Tag);
+    }
+
+    private void OnBannerCustomLostFocus(object sender, RoutedEventArgs e)
+    {
+        var text = BannerCustomBox.Text.Replace("\r\n", "\n").Trim();
+        if (text == App.Database.GetSetting(SettingKeys.BannerCustom, ""))
+            return;
+        App.Database.SetSetting(SettingKeys.BannerCustom, text);
+        Main.Notify("自分で書いたことばを保存しました。");
     }
 
     private void OnCityKeyDown(object sender, System.Windows.Input.KeyEventArgs e)

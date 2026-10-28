@@ -12,42 +12,128 @@
         <Grid Margin="0,0,0,18">
             <StackPanel>
                 <TextBlock Text="メモ" Style="{StaticResource PageTitle}" />
-                <TextBlock Text="入力した内容は自動で保存されます" Style="{StaticResource Muted}" FontSize="14" Margin="0,4,0,0" />
+                <TextBlock x:Name="SubtitleText" Style="{StaticResource Muted}" FontSize="14" Margin="0,4,0,0"
+                           Text="入力した内容は自動で保存されます" />
             </StackPanel>
-            <ui:Button HorizontalAlignment="Right" VerticalAlignment="Center" Content="TXTで書き出す"
-                       Icon="{ui:SymbolIcon ArrowDownload24}" Padding="16,9" Click="OnExportClick" />
+            <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                <ui:Button Content="TXTで書き出す" Icon="{ui:SymbolIcon ArrowDownload24}" Padding="16,9"
+                           Margin="0,0,8,0" Click="OnExportClick" />
+                <ui:Button Appearance="Primary" Content="新しいメモ" Icon="{ui:SymbolIcon Add24}" Padding="16,9"
+                           Click="OnAddClick" />
+            </StackPanel>
         </Grid>
 
-        <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="250" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
 
-                <!-- 本文。Ctrl+Z で元に戻せる -->
-                <TextBox x:Name="Body" AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
-                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                         VerticalContentAlignment="Top" FontSize="15" Padding="14"
-                         Background="Transparent" BorderThickness="0" Margin="6,6,6,0"
-                         Foreground="{DynamicResource TextBrush}" IsUndoEnabled="True"
-                         AutomationProperties.Name="メモの本文"
-                         CaretBrush="{DynamicResource TextBrush}"
-                         TextChanged="OnTextChanged">
-                    <!-- WPF-UI の枠付きの見た目を使わず、カードと一体に見せる -->
-                    <TextBox.Template>
-                        <ControlTemplate TargetType="TextBox">
-                            <ScrollViewer x:Name="PART_ContentHost" Padding="{TemplateBinding Padding}"
-                                          Background="Transparent" Focusable="False" />
-                        </ControlTemplate>
-                    </TextBox.Template>
-                </TextBox>
+            <!-- メモの一覧。押すとそのメモに切りかわる -->
+            <Border Style="{StaticResource Card}" Padding="8">
+                <ListBox x:Name="MemoList" Background="Transparent" BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         AutomationProperties.Name="メモの一覧"
+                         SelectionChanged="OnMemoSelected">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Cursor" Value="Hand" />
+                            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                            <Setter Property="AutomationProperties.Name" Value="{Binding DisplayTitle}" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border x:Name="Bd" Background="Transparent" CornerRadius="8" Padding="12,8"
+                                                Margin="0,0,0,2" BorderThickness="1" BorderBrush="Transparent">
+                                            <ContentPresenter />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleBrush}" />
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleBrush}" />
+                                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                            </Trigger>
+                                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel>
+                                <TextBlock Text="{Binding DisplayTitle}" FontSize="14" FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextBrush}" />
+                                <TextBlock Text="{Binding Preview}" FontSize="12" Margin="0,2,0,0"
+                                           TextTrimming="CharacterEllipsis" Foreground="{DynamicResource MutedBrush}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
 
-                <Grid Grid.Row="1" Margin="20,4,20,12">
-                    <TextBlock x:Name="StatusText" Style="{StaticResource Muted}" FontSize="12" Text="保存済み" />
-                    <TextBlock x:Name="CountText" Style="{StaticResource Muted}" FontSize="12" HorizontalAlignment="Right" />
+            <Border Grid.Column="2" Style="{StaticResource Card}" Padding="0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- メモの名前。ここを書きかえると名前が変わる -->
+                    <DockPanel Margin="20,14,12,6">
+                        <ui:Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Padding="8" Margin="0"
+                                   ToolTip="このメモを削除" Click="OnDeleteClick"
+                                   AutomationProperties.Name="このメモを削除">
+                            <ui:SymbolIcon Symbol="Delete24" FontSize="18" Foreground="{DynamicResource MutedBrush}" />
+                        </ui:Button>
+                        <TextBox x:Name="TitleBox" FontSize="18" FontWeight="SemiBold" Background="Transparent"
+                                 BorderThickness="0" Foreground="{DynamicResource TextBrush}"
+                                 CaretBrush="{DynamicResource TextBrush}" VerticalAlignment="Center"
+                                 MaxLength="100" AutomationProperties.Name="メモの名前"
+                                 ToolTip="メモの名前（クリックして書きかえられます）"
+                                 TextChanged="OnTitleChanged" KeyDown="OnTitleKeyDown">
+                            <TextBox.Template>
+                                <ControlTemplate TargetType="TextBox">
+                                    <ScrollViewer x:Name="PART_ContentHost" Background="Transparent" Focusable="False"
+                                                  VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Hidden" />
+                                </ControlTemplate>
+                            </TextBox.Template>
+                        </TextBox>
+                    </DockPanel>
+                    <Border Grid.Row="1" Height="1" Background="{DynamicResource LineBrush}" Margin="20,0" />
+
+                    <!-- 本文。Ctrl+Z で元に戻せる -->
+                    <TextBox x:Name="Body" Grid.Row="2" AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                             VerticalContentAlignment="Top" FontSize="15" Padding="14"
+                             Background="Transparent" BorderThickness="0" Margin="6,0,6,0"
+                             Foreground="{DynamicResource TextBrush}" IsUndoEnabled="True"
+                             AutomationProperties.Name="メモの本文"
+                             CaretBrush="{DynamicResource TextBrush}"
+                             TextChanged="OnTextChanged">
+                        <!-- WPF-UI の枠付きの見た目を使わず、カードと一体に見せる -->
+                        <TextBox.Template>
+                            <ControlTemplate TargetType="TextBox">
+                                <ScrollViewer x:Name="PART_ContentHost" Padding="{TemplateBinding Padding}"
+                                              Background="Transparent" Focusable="False" />
+                            </ControlTemplate>
+                        </TextBox.Template>
+                    </TextBox>
+
+                    <Grid Grid.Row="3" Margin="20,4,20,12">
+                        <TextBlock x:Name="StatusText" Style="{StaticResource Muted}" FontSize="12" Text="保存済み" />
+                        <TextBlock x:Name="CountText" Style="{StaticResource Muted}" FontSize="12" HorizontalAlignment="Right" />
+                    </Grid>
                 </Grid>
-            </Grid>
-        </Border>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>

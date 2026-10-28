@@ -8,10 +8,16 @@ public sealed record TaskItem(
 /// <summary>付箋 1 枚。Color は選んだ色の番号（選んでいなければ null で、id から色を決める）。</summary>
 public sealed record StickyNote(long Id, string Title, string Body, string CreatedAt, int? Color = null);
 
-/// <summary>掲示板に貼ったもの 1 枚。Kind は "memo" / "sticky" / "task"、RefId はその id（メモは 1）。</summary>
+/// <summary>
+/// メモ 1 枚。Id = 1 は v6 から使っているメモで、本文は v6 と同じ notes の表に入っている。
+/// UpdatedAt は最後に書きかえた日時。
+/// </summary>
+public sealed record Memo(long Id, string Title, string Body, string CreatedAt, string UpdatedAt);
+
 /// <summary>デスクトップに出している付箋 1 枚の、窓の位置と大きさ。</summary>
 public sealed record DesktopSticky(long StickyId, double X, double Y, double Width, double Height, bool Topmost);
 
+/// <summary>掲示板に貼ったもの 1 枚。Kind は "memo" / "sticky" / "task"、RefId はそれぞれの id。</summary>
 public sealed record BoardItem(long Id, string Kind, long RefId, double X, double Y, long Z);
 
 /// <summary>タスク一覧の絞り込み（v6 と同じ 5 種類）。</summary>
@@ -136,6 +142,16 @@ public sealed class SeigetsuDatabase
                 body TEXT NOT NULL DEFAULT '')
             """);
         Run("INSERT OR IGNORE INTO notes (id, body) VALUES (1, '')");
+        // メモを何枚も持てるようにする表（v7 で追加）。v6 の notes の表は変えずに、別の表に持つ。
+        // id = 1 は v6 から使っているメモで、本文は notes の表のほうに書く（v6 で開いても同じ中身が見えるように）。
+        Run("""
+            CREATE TABLE IF NOT EXISTS memo_pages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                body TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL)
+            """);
         Run("""
             CREATE TABLE IF NOT EXISTS work_sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -181,13 +197,26 @@ public sealed class SeigetsuDatabase
                 y REAL NOT NULL,
                 width REAL NOT NULL,
                 height REAL NOT NULL,
-                topmost INTEGER NOT NULL DEFAULT 1)
+                topmost INTEGER NOT NULL DEFAULT 0)
             """);
         Run("""
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL)
             """);
+        // 付箋はもともと最前面に出していたが、ほかの窓のうしろ（壁紙の上）に置くように変えた。前から出していた付箋も一度だけ合わせる
+        Run("""
+            UPDATE desktop_stickies SET topmost = 0
+            WHERE NOT EXISTS (SELECT 1 FROM settings WHERE key = 'desktop_stickies_behind')
+            """);
+        Run("INSERT OR IGNORE INTO settings (key, value) VALUES ('desktop_stickies_behind', '1')");
+        // メモの表を初めて作ったときだけ、今までのメモを 1 枚目として入れる（消したあとに勝手に戻らないよう、一度だけ）
+        Run($"""
+            INSERT OR IGNORE INTO memo_pages (id, title, body, created_at, updated_at)
+            SELECT 1, 'メモ', '', '{Now}', '{Now}'
+            WHERE NOT EXISTS (SELECT 1 FROM settings WHERE key = 'memo_pages_ready')
+            """);
+        Run("INSERT OR IGNORE INTO settings (key, value) VALUES ('memo_pages_ready', '1')");
         transaction.Commit();
     }
 
@@ -384,11 +413,74 @@ public sealed class SeigetsuDatabase
         return tasks;
     }
 
-    // ---- メモ（1 つだけ。id = 1 の行） -----------------------------------
-    public string GetNote() => Scalar("SELECT body FROM notes WHERE id = 1") as string ?? "";
+    // ---- メモ（何枚でも。id = 1 の本文だけは v6 と同じ notes の表） -----------
+    // id = 1 の本文は notes の表から読む
+    private const string MemoColumns = """
+        m.id, m.title, CASE WHEN m.id = 1 THEN COALESCE((SELECT body FROM notes WHERE id = 1), '') ELSE m.body END,
+        m.created_at, m.updated_at
+        """;
 
-    public void SaveNote(string body) =>
-        Execute("UPDATE notes SET body = $body WHERE id = 1", ("$body", body));
+    /// <summary>
+    /// メモの一覧（作った順）。1 枚も無ければ、空のメモを 1 枚作る。
+    /// 1 枚目を消したあとで v6 がそこに書いた場合は、消えないように 1 枚目として戻す。
+    /// </summary>
+    public IReadOnlyList<Memo> GetMemos()
+    {
+        Execute($"""
+            INSERT OR IGNORE INTO memo_pages (id, title, body, created_at, updated_at)
+            SELECT 1, 'メモ', '', '{Now}', '{Now}'
+            WHERE (SELECT body FROM notes WHERE id = 1) <> '' OR NOT EXISTS (SELECT 1 FROM memo_pages)
+            """);
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT {MemoColumns} FROM memo_pages m ORDER BY m.id";
+        var memos = new List<Memo>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            memos.Add(ReadMemo(reader));
+        return memos;
+    }
+
+    /// <summary>1 枚だけ読む。無ければ null。</summary>
+    public Memo? GetMemo(long id)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT {MemoColumns} FROM memo_pages m WHERE m.id = $id";
+        command.Parameters.AddWithValue("$id", id);
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? ReadMemo(reader) : null;
+    }
+
+    private static Memo ReadMemo(SqliteDataReader reader) =>
+        new(reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4));
+
+    /// <summary>新しいメモを作って、その id を返す。</summary>
+    public long AddMemo(string title) =>
+        Convert.ToInt64(Scalar("""
+            INSERT INTO memo_pages (title, body, created_at, updated_at) VALUES ($title, '', $now, $now) RETURNING id
+            """, ("$title", title), ("$now", Now)));
+
+    /// <summary>名前と本文を保存する。id = 1 の本文は notes の表に書く。</summary>
+    public void SaveMemo(long id, string title, string body)
+    {
+        if (id == 1)
+        {
+            Execute("UPDATE notes SET body = $body WHERE id = 1", ("$body", body));
+            body = ""; // 同じ本文を二か所に持たない
+        }
+        Execute("UPDATE memo_pages SET title = $title, body = $body, updated_at = $now WHERE id = $id",
+            ("$title", title), ("$body", body), ("$now", Now), ("$id", id));
+    }
+
+    public void DeleteMemo(long id)
+    {
+        Execute("DELETE FROM memo_pages WHERE id = $id", ("$id", id));
+        Execute("DELETE FROM board_items WHERE kind = 'memo' AND ref_id = $id", ("$id", id));
+        // 1 枚目を消したら、v6 側のメモも空にする（中身が残っていると、また 1 枚目として戻ってくるため）
+        if (id == 1)
+            Execute("UPDATE notes SET body = '' WHERE id = 1");
+    }
 
     // ---- BGM のプレイリスト -------------------------------------------
     public IReadOnlyList<Services.Track> GetPlaylist()
@@ -469,11 +561,11 @@ public sealed class SeigetsuDatabase
         return items;
     }
 
-    /// <summary>デスクトップに出す（最初は最前面）。すでに出ていれば何もしない。</summary>
+    /// <summary>デスクトップに出す（最初は壁紙のすぐ上、ほかの窓のうしろ）。すでに出ていれば何もしない。</summary>
     public void ShowStickyOnDesktop(long stickyId, double x, double y, double width, double height) =>
         Execute("""
             INSERT OR IGNORE INTO desktop_stickies (sticky_id, x, y, width, height, topmost)
-            VALUES ($id, $x, $y, $w, $h, 1)
+            VALUES ($id, $x, $y, $w, $h, 0)
             """, ("$id", stickyId), ("$x", x), ("$y", y), ("$w", width), ("$h", height));
 
     public void SaveDesktopStickyBounds(long stickyId, double x, double y, double width, double height) =>
@@ -489,13 +581,14 @@ public sealed class SeigetsuDatabase
         Execute("DELETE FROM desktop_stickies WHERE sticky_id = $id", ("$id", stickyId));
 
     // ---- 掲示板 -------------------------------------------------------
-    /// <summary>貼ってあるもの。下にあるもの（z が小さい順）から。消された付箋・タスクの分は先に片付ける（v6 で消した場合など）。</summary>
+    /// <summary>貼ってあるもの。下にあるもの（z が小さい順）から。消されたメモ・付箋・タスクの分は先に片付ける（v6 で消した場合など）。</summary>
     public IReadOnlyList<BoardItem> GetBoardItems()
     {
         Execute("""
             DELETE FROM board_items
             WHERE (kind = 'sticky' AND ref_id NOT IN (SELECT id FROM sticky_notes))
                OR (kind = 'task' AND ref_id NOT IN (SELECT id FROM tasks))
+               OR (kind = 'memo' AND ref_id NOT IN (SELECT id FROM memo_pages))
             """);
         using var connection = Open();
         using var command = connection.CreateCommand();

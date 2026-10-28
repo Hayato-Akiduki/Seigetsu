@@ -33,4 +33,13 @@ public static class SettingKeys
     public const string SidebarCollapsed = "sidebar_collapsed"; // 1 / 0（v7 だけの設定）
     public const string DueNotify = "due_notify";               // 1 / 0 締切の通知（v7 だけの設定）
     public const string DueNotifiedOn = "due_notified_on";      // 締切を最後に知らせた日（yyyy-MM-dd）
+    // 背景画像を出す場所（v7 だけの設定。1 / 0）
+    public const string BackgroundBanner = "background_on_banner"; // ホームの上帯
+    public const string BackgroundWindow = "background_on_window"; // 窓全体
+    public const string BackgroundClock = "background_on_clock";   // 時計の大画面
+    public const string BackgroundStrength = "background_strength"; // 窓全体に敷いた画像の濃さ STRONG / NORMAL / WEAK
+    // ホームの上帯に出すことば（v7 だけの設定）
+    public const string BannerKinds = "banner_kinds";       // 出す種類（greeting,quote,season,tasks,custom をカンマで区切る）
+    public const string BannerInterval = "banner_interval"; // 切り替える間隔（秒）
+    public const string BannerCustom = "banner_custom";     // 自分で書いたことば（1 行に 1 つ）
 }

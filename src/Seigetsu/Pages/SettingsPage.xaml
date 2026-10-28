@@ -25,8 +25,8 @@
                             <ListBoxItem Content="Windows に合わせる" Tag="SYSTEM" />
                         </ListBox>
 
-                        <TextBlock Text="ホームの背景画像" Style="{StaticResource FieldLabel}" Margin="0,18,0,2" />
-                        <TextBlock Text="ホームの上のあいさつの所に、好きな画像を敷けます。" Style="{StaticResource Muted}"
+                        <TextBlock Text="背景画像" Style="{StaticResource FieldLabel}" Margin="0,18,0,2" />
+                        <TextBlock Text="好きな画像を敷けます。出す場所は下で選べます（はじめは、窓全体と時計の大画面）。" Style="{StaticResource Muted}"
                                    FontSize="12" Margin="0,0,0,10" />
                         <StackPanel Orientation="Horizontal">
                             <ui:Button Content="画像を選ぶ" Icon="{ui:SymbolIcon Image24}" Padding="14,8"
@@ -37,6 +37,48 @@
                                        VerticalAlignment="Center" Margin="12,0,0,0" TextTrimming="CharacterEllipsis"
                                        MaxWidth="360" />
                         </StackPanel>
+                        <StackPanel x:Name="BackgroundOptions" Margin="0,12,0,0">
+                            <TextBlock Text="出す場所" Style="{StaticResource Muted}" FontSize="13" Margin="0,0,0,6" />
+                            <WrapPanel>
+                                <CheckBox x:Name="BackgroundBannerCheck" Content="ホームの上帯" Margin="0,0,20,0"
+                                          Click="OnBackgroundPlaceClick" Tag="Banner" />
+                                <CheckBox x:Name="BackgroundWindowCheck" Content="窓全体" Margin="0,0,20,0"
+                                          Click="OnBackgroundPlaceClick" Tag="Window" />
+                                <CheckBox x:Name="BackgroundClockCheck" Content="時計の大画面"
+                                          Click="OnBackgroundPlaceClick" Tag="Clock" />
+                            </WrapPanel>
+                            <TextBlock Text="窓全体に敷いた画像の濃さ" Style="{StaticResource Muted}" FontSize="13" Margin="0,12,0,6" />
+                            <ListBox x:Name="BackgroundStrengthList" Style="{StaticResource SegmentedList}" HorizontalAlignment="Left"
+                                     SelectionChanged="OnBackgroundStrengthChanged">
+                                <ListBoxItem Content="こい" Tag="STRONG" />
+                                <ListBoxItem Content="ふつう" Tag="NORMAL" />
+                                <ListBoxItem Content="うすい" Tag="WEAK" />
+                            </ListBox>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- ホームの上帯のことば -->
+                <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="ホームの上帯のことば" Style="{StaticResource CardTitle}" Margin="0,0,0,2" />
+                        <TextBlock Style="{StaticResource Muted}" FontSize="12" Margin="0,0,0,12" TextWrapping="Wrap"
+                                   Text="ホームを開いたときはあいさつを出し、時間がたつと下で選んだことばに順番に切り替えます。ことばを押しても切り替わります。" />
+                        <TextBlock Text="出すもの" Style="{StaticResource Muted}" FontSize="13" Margin="0,0,0,6" />
+                        <WrapPanel x:Name="BannerKindsPanel" />
+                        <TextBlock Text="切り替える間隔" Style="{StaticResource Muted}" FontSize="13" Margin="0,12,0,6" />
+                        <ListBox x:Name="BannerIntervalList" Style="{StaticResource SegmentedList}" HorizontalAlignment="Left"
+                                 SelectionChanged="OnBannerIntervalChanged">
+                            <ListBoxItem Content="30 秒" Tag="30" />
+                            <ListBoxItem Content="1 分" Tag="60" />
+                            <ListBoxItem Content="5 分" Tag="300" />
+                            <ListBoxItem Content="10 分" Tag="600" />
+                        </ListBox>
+                        <TextBlock Text="自分で書いたことば（1 行に 1 つ）" Style="{StaticResource Muted}" FontSize="13" Margin="0,12,0,6" />
+                        <TextBox x:Name="BannerCustomBox" AcceptsReturn="True" TextWrapping="Wrap" Height="96"
+                                 VerticalScrollBarVisibility="Auto" MaxWidth="560" HorizontalAlignment="Left" Width="560"
+                                 AutomationProperties.Name="自分で書いたことば" LostFocus="OnBannerCustomLostFocus" />
+                        <TextBlock Text="入力欄から出ると保存します。" Style="{StaticResource Muted}" FontSize="12" Margin="0,4,0,0" />
                     </StackPanel>
                 </Border>
 

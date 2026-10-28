@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Seigetsu.Data;
 using Seigetsu.Services;
@@ -16,14 +17,21 @@ public partial class HomePage : UserControl, IRefreshable
     private static readonly CultureInfo Japanese = new("ja-JP");
     private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
 
+    // 上帯のことばを切り替えるタイマーと、いま出していることば
+    private readonly DispatcherTimer _messageTimer = new();
+    private BannerMessage? _message;
+
     public HomePage()
     {
         InitializeComponent();
         _clock.Tick += (_, _) => UpdateClock();
+        _messageTimer.Tick += (_, _) => ShowNextMessage();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // ホームを開いたときは、まずあいさつから
+        ShowMessage(BannerMessages.Greeting(DateTime.Now), animate: false);
         UpdateClock();
         _clock.Start();
         App.Weather.Changed += UpdateWeather;
@@ -33,6 +41,7 @@ public partial class HomePage : UserControl, IRefreshable
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         _clock.Stop();
+        _messageTimer.Stop();
         App.Weather.Changed -= UpdateWeather;
     }
 
@@ -77,20 +86,45 @@ public partial class HomePage : UserControl, IRefreshable
     private void UpdateClock()
     {
         var now = DateTime.Now;
-        GreetingText.Text = now.Hour switch
-        {
-            >= 5 and < 11 => "おはようございます",
-            >= 11 and < 18 => "こんにちは",
-            _ => "こんばんは",
-        };
+        // あいさつを出しているあいだに時間帯が変わったら、あいさつも変える
+        if (_message?.Kind == "greeting")
+            GreetingText.Text = BannerMessages.GreetingText(now);
         DateText.Text = now.ToString("yyyy年M月d日（ddd）", Japanese);
         ClockText.Text = now.ToString("HH:mm");
+    }
+
+    private void OnMessageClick(object sender, System.Windows.Input.MouseButtonEventArgs e) => ShowNextMessage();
+
+    private void ShowNextMessage() => ShowMessage(BannerMessages.Next(_message?.Kind, DateTime.Now), animate: true);
+
+    /// <summary>上帯のことばを出す。切り替えるときは、ふわっと出す。</summary>
+    private void ShowMessage(BannerMessage message, bool animate)
+    {
+        _message = message;
+        GreetingText.Text = message.Text;
+        // 長いことばは少し小さくして、上帯が大きくなりすぎないようにする
+        GreetingText.FontSize = message.Text.Length > 20 ? 21 : 26;
+        SourceText.Text = message.Source is null ? "" : $"― {message.Source}";
+        SourceText.Visibility = message.Source is null ? Visibility.Collapsed : Visibility.Visible;
+        if (animate)
+            MessagePanel.BeginAnimation(OpacityProperty,
+                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(500)) { EasingFunction = new QuadraticEase() });
+        RestartMessageTimer();
+    }
+
+    // 設定で間隔を変えたときにも合わせられるよう、毎回はかりなおす
+    private void RestartMessageTimer()
+    {
+        _messageTimer.Stop();
+        if (!IsLoaded)
+            return;
+        _messageTimer.Interval = TimeSpan.FromSeconds(Math.Max(10, BannerMessages.IntervalSeconds));
+        _messageTimer.Start();
     }
 
     public void Refresh()
     {
         var db = App.Database;
-        DbPathText.Text = db.Path;
 
         OpenTasksText.Text = $"{db.TaskCounts().Open} 件";
         TodayWorkText.Text = Format.Duration(db.WorkSecondsToday());
@@ -104,18 +138,17 @@ public partial class HomePage : UserControl, IRefreshable
         NoTasksText.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private string? _bannerPath;
+    private object? _bannerImage;
 
     /// <summary>背景画像を選んでいれば見出しに敷く。選んでいなければ、ふつうの見出しに戻す。</summary>
     private void UpdateBanner()
     {
-        var path = BackgroundImage.CurrentPath;
-        // 同じ画像なら読み直さない（データが変わるたびに呼ばれるので）
-        if (path != _bannerPath || (path is not null && Banner.Background is null))
+        var image = BackgroundImage.For(BackgroundPlace.Banner);
+        // 同じ画像なら塗り直さない（データが変わるたびに呼ばれるので）
+        if (image != _bannerImage)
         {
-            _bannerPath = path;
-            var image = path is null ? null : BackgroundImage.Load(path);
-            Banner.Background = image is null ? null : new ImageBrush(image) { Stretch = Stretch.UniformToFill };
+            _bannerImage = image;
+            Banner.Background = image is null ? null : BackgroundImage.Fill(image);
         }
 
         var hasImage = Banner.Background is not null;
@@ -127,6 +160,7 @@ public partial class HomePage : UserControl, IRefreshable
             GreetingText.Foreground = Brushes.White;
             ClockText.Foreground = Brushes.White;
             DateText.Foreground = new SolidColorBrush(Color.FromRgb(0xDC, 0xE6, 0xF7));
+            SourceText.Foreground = new SolidColorBrush(Color.FromRgb(0xDC, 0xE6, 0xF7));
             BigClockIcon.Foreground = new SolidColorBrush(Color.FromRgb(0xDC, 0xE6, 0xF7));
         }
         else
@@ -134,6 +168,7 @@ public partial class HomePage : UserControl, IRefreshable
             GreetingText.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
             ClockText.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
             DateText.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+            SourceText.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             BigClockIcon.SetResourceReference(Wpf.Ui.Controls.SymbolIcon.ForegroundProperty, "MutedBrush");
         }
     }

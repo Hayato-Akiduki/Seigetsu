@@ -25,6 +25,7 @@ public partial class BoardPage : UserControl, IRefreshable
     private const double Gap = 24;
 
     private IReadOnlyList<BoardItem> _items = [];
+    private Dictionary<long, Memo> _memos = [];
     private Dictionary<long, StickyNote> _stickies = [];
     private Dictionary<long, TaskItem> _tasks = [];
 
@@ -47,6 +48,7 @@ public partial class BoardPage : UserControl, IRefreshable
     public void Refresh()
     {
         var db = App.Database;
+        _memos = db.GetMemos().ToDictionary(m => m.Id); // 先に読む（1 枚も無ければ、ここで作られる）
         _items = db.GetBoardItems();
         _stickies = db.GetStickies().ToDictionary(n => n.Id);
         _tasks = db.AllTasks().ToDictionary(t => t.Id);
@@ -119,10 +121,10 @@ public partial class BoardPage : UserControl, IRefreshable
         UIElement body;
         switch (item.Kind)
         {
-            case "memo":
+            case "memo" when _memos.TryGetValue(item.RefId, out var memo):
                 (background, icon, kind) = (ThemeService.Brush("CardBrush"), SymbolRegular.Notepad24, "メモ");
-                name = "メモ";
-                body = MemoBody();
+                name = $"メモ「{NotesPage.DisplayTitleOf(memo.Title)}」";
+                body = MemoBody(memo);
                 break;
             case "sticky" when _stickies.TryGetValue(item.RefId, out var note):
                 (background, icon, kind) = (ThemeService.StickyBrush(note), SymbolRegular.Note24, "付箋");
@@ -196,19 +198,26 @@ public partial class BoardPage : UserControl, IRefreshable
         return card;
     }
 
-    private static UIElement MemoBody()
+    private static UIElement MemoBody(Memo memo)
     {
-        var text = App.Database.GetNote().Trim();
-        return new TextBlock
+        var text = memo.Body.Trim();
+        var panel = new StackPanel { Margin = new Thickness(0, 0, 8, 0) };
+        panel.Children.Add(new TextBlock
+        {
+            Text = NotesPage.DisplayTitleOf(memo.Title), FontSize = 15, FontWeight = FontWeights.Bold,
+            TextWrapping = TextWrapping.Wrap, Foreground = ThemeService.Brush("TextBrush"),
+        });
+        panel.Children.Add(new TextBlock
         {
             Text = text == "" ? "（メモは空です）" : text,
             FontSize = 13,
             TextWrapping = TextWrapping.Wrap,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxHeight = 260,
-            Margin = new Thickness(0, 0, 8, 0),
+            MaxHeight = 240,
+            Margin = new Thickness(0, 6, 0, 0),
             Foreground = ThemeService.Brush(text == "" ? "MutedBrush" : "TextBrush"),
-        };
+        });
+        return panel;
     }
 
     private static UIElement StickyBody(StickyNote note)
@@ -311,6 +320,8 @@ public partial class BoardPage : UserControl, IRefreshable
         switch (item.Kind)
         {
             case "memo":
+                // メモの画面は、開いたときにこの設定のメモを出す
+                App.Database.SetSetting(NotesPage.SelectedSetting, item.RefId.ToString());
                 Main.ShowPage("notes");
                 break;
             case "sticky" when _stickies.TryGetValue(item.RefId, out var note):
@@ -325,9 +336,7 @@ public partial class BoardPage : UserControl, IRefreshable
     private void Unpin(BoardItem item)
     {
         App.Database.UnpinBoardItem(item.Id);
-        Main.Notify(item.Kind == "memo"
-            ? "掲示板からはがしました。"
-            : "掲示板からはがしました（付箋やタスクそのものは残っています）。");
+        Main.Notify("掲示板からはがしました（メモ・付箋・タスクそのものは残っています）。");
         Refresh();
     }
 
@@ -410,9 +419,12 @@ public partial class BoardPage : UserControl, IRefreshable
         var pinned = _items.Select(i => (i.Kind, i.RefId)).ToHashSet();
         var menu = new ContextMenu();
 
-        var memo = MenuEntry("メモ", SymbolRegular.Notepad24, () => Pin("memo", 1, at));
-        memo.IsEnabled = !pinned.Contains(("memo", 1));
-        menu.Items.Add(memo);
+        var memos = MenuEntry("メモ", SymbolRegular.Notepad24, null);
+        foreach (var memo in _memos.Values.Where(m => !pinned.Contains(("memo", m.Id))))
+            memos.Items.Add(MenuEntry(NotesPage.DisplayTitleOf(memo.Title), null, () => Pin("memo", memo.Id, at)));
+        if (memos.Items.Count == 0)
+            memos.Items.Add(new MenuItem { Header = "貼れるメモはありません", IsEnabled = false });
+        menu.Items.Add(memos);
 
         var stickies = MenuEntry("付箋", SymbolRegular.Note24, null);
         foreach (var note in _stickies.Values.OrderByDescending(n => n.Id).Where(n => !pinned.Contains(("sticky", n.Id))))

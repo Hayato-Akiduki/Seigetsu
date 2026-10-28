@@ -58,6 +58,7 @@ public partial class MainWindow : FluentWindow
         NavList.ItemsSource = _items;
         NavList.SelectedIndex = 0;
         ApplySidebar(App.Database.GetSetting(SettingKeys.SidebarCollapsed, "0") == "1");
+        ApplyBackground();
 
         _tick.Tick += (_, _) => OnTick();
         _daily.Tick += (_, _) =>
@@ -226,6 +227,18 @@ public partial class MainWindow : FluentWindow
     {
         ThemeService.Apply(mode);
         DataChanged();
+    }
+
+    /// <summary>背景画像の設定を、窓全体と表示中の画面に合わせる。</summary>
+    public void ApplyBackground()
+    {
+        var image = BackgroundImage.For(BackgroundPlace.Window);
+        WindowBackground.Background = image is null ? null : BackgroundImage.Fill(image);
+        WindowBackground.Visibility = image is null ? Visibility.Collapsed : Visibility.Visible;
+        WindowVeil.Visibility = WindowBackground.Visibility;
+        WindowVeil.Opacity = BackgroundImage.WindowVeil;
+        if (PageHost.Content is IRefreshable page)
+            page.Refresh();
     }
 
     private ClockWindow? _clock;

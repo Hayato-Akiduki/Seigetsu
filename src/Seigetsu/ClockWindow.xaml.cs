@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
+using Seigetsu.Services;
 
 namespace Seigetsu;
 
@@ -25,6 +26,13 @@ public partial class ClockWindow : Window
         Top = owner.Top + 40;
         Width = 800;
         Height = 600;
+        var image = BackgroundImage.For(BackgroundPlace.Clock);
+        if (image is not null)
+        {
+            BackgroundLayer.Background = BackgroundImage.Fill(image);
+            BackgroundLayer.Visibility = Visibility.Visible;
+            BackgroundShade.Visibility = Visibility.Visible;
+        }
         _tick.Tick += (_, _) => UpdateClock();
         _idle.Tick += (_, _) => HideHint();
     }

@@ -8,8 +8,12 @@
         Background="#000000" FontFamily="{StaticResource AppFont}"
         Loaded="OnLoaded" Closed="OnClosed"
         KeyDown="OnKeyDown" MouseDoubleClick="OnDoubleClick" MouseMove="OnMouseMove">
-    <!-- 大画面の時計。外観の設定にかかわらず、黒と青で出す -->
+    <!-- 大画面の時計。外観の設定にかかわらず、黒と青で出す（背景画像を敷くこともできる） -->
     <Grid>
+        <!-- 背景画像（設定で「時計の大画面」を選んだとき）。暗い膜を重ねて、時刻を読みやすくする -->
+        <Border x:Name="BackgroundLayer" Visibility="Collapsed" />
+        <Border x:Name="BackgroundShade" Background="#000000" Opacity="0.5" Visibility="Collapsed" />
+
         <Viewbox Margin="80,60">
             <StackPanel HorizontalAlignment="Center">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">

@@ -145,6 +145,10 @@
             </DockPanel>
         </Border>
 
+        <!-- 背景画像（設定で「窓全体」を選んだとき）。上に背景色の膜を重ねて、文字を読みやすくする -->
+        <Border x:Name="WindowBackground" Grid.Column="1" Visibility="Collapsed" />
+        <Border x:Name="WindowVeil" Grid.Column="1" Background="{DynamicResource BgBrush}" Visibility="Collapsed" />
+
         <!-- 画面の中身 -->
         <ContentControl x:Name="PageHost" Grid.Column="1" Margin="36,48,36,28" Focusable="False" />
 
