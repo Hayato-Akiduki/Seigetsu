@@ -202,9 +202,46 @@
                         <TextBlock Text="このアプリについて" Style="{StaticResource CardTitle}" Margin="0,0,0,2" />
                         <TextBlock x:Name="VersionText" Style="{StaticResource Muted}" FontSize="12" />
                         <TextBlock Style="{StaticResource Muted}" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"
-                                   Text="使っている部品：WPF-UI、Microsoft.Data.Sqlite、NAudio、NAudio.Vorbis、Velopack（いずれも MIT ライセンス）" />
+                                   Text="使っている部品：WPF-UI、Microsoft.Data.Sqlite、NAudio、NAudio.Vorbis、Velopack（いずれも MIT ライセンス）、Microsoft Edge WebView2（BSD ライセンス）" />
                     </StackPanel>
                 </Border>
+
+                <!--
+                  追加の機能。一部の人だけが使う機能（長崎大学モードなど）は、ふだんは畳んでおいて目立たせない。
+                  使っている機能があるときは、開いた状態で出す（SettingsPage.xaml.cs の Refresh）
+                -->
+                <ui:CardExpander x:Name="ExtrasExpander" Margin="0,0,0,12" Icon="{ui:SymbolIcon PuzzlePiece24}">
+                    <ui:CardExpander.Header>
+                        <StackPanel>
+                            <TextBlock Text="追加の機能" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource TextBrush}" />
+                            <TextBlock Text="一部の人向けの機能です。" Style="{StaticResource Muted}" FontSize="12" />
+                        </StackPanel>
+                    </ui:CardExpander.Header>
+
+                    <!-- 長崎大学モード -->
+                    <StackPanel>
+                        <TextBlock Text="長崎大学モード" Style="{StaticResource CardTitle}" Margin="0,0,0,2" />
+                        <TextBlock Style="{StaticResource Muted}" FontSize="12" Margin="0,0,0,12" TextWrapping="Wrap"
+                                   Text="長崎大学の学生向けです。NU-Web の時間割をカレンダーに、LACS の課題の締切をタスクに取り込みます。起動したときと、その後 3 時間ごとに自動で更新します。ログインは最初に一度、アプリの中のブラウザで自分で行います（パスワードは霽月には保存しません。ログインが切れたらお知らせします）。" />
+                        <ListBox x:Name="NagasakiModeList" Style="{StaticResource SegmentedList}" HorizontalAlignment="Left"
+                                 SelectionChanged="OnNagasakiModeChanged">
+                            <ListBoxItem Content="オン" Tag="1" />
+                            <ListBoxItem Content="オフ" Tag="0" />
+                        </ListBox>
+                        <StackPanel x:Name="NagasakiPanel" Margin="0,12,0,0">
+                            <WrapPanel>
+                                <ui:Button x:Name="NagasakiSyncButton" Content="今すぐ更新" Icon="{ui:SymbolIcon ArrowSync24}"
+                                           Appearance="Primary" Padding="14,7" Margin="0,0,8,8" Click="OnNagasakiSyncClick" />
+                                <ui:Button Content="ログインする" Icon="{ui:SymbolIcon Person24}"
+                                           Padding="14,7" Margin="0,0,8,8" Click="OnNagasakiLoginClick" />
+                                <ui:Button x:Name="ClearTimetableButton" Content="時間割を消す" Padding="14,7"
+                                           Margin="0,0,8,8" Click="OnClearTimetableClick" />
+                            </WrapPanel>
+                            <TextBlock x:Name="NagasakiStatusText" Style="{StaticResource Muted}" FontSize="12"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
+                </ui:CardExpander>
             </StackPanel>
         </ScrollViewer>
     </Grid>

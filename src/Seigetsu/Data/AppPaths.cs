@@ -10,6 +10,9 @@ public static class AppPaths
     // v6 の error.log と混ざらないよう、C# 版は別のファイルに書く
     public static string ErrorLogPath => Path.Combine(DataDir, "error-v7.log");
 
+    /// <summary>長崎大学モードのブラウザ（WebView2）のログイン状態などを置く場所。</summary>
+    public static string WebViewDir => Path.Combine(DataDir, "webview");
+
     private static string ResolveDataDir()
     {
         // テスト用に保存先を切り替えられる（v6 と同じ環境変数）
@@ -34,6 +37,9 @@ public static class SettingKeys
     public const string SidebarCollapsed = "sidebar_collapsed"; // 1 / 0（v7 だけの設定）
     public const string DueNotify = "due_notify";               // 1 / 0 締切の通知（v7 だけの設定）
     public const string DueNotifiedOn = "due_notified_on";      // 締切を最後に知らせた日（yyyy-MM-dd）
+    public const string NagasakiMode = "nagasaki_mode";         // 1 / 0 長崎大学モード（v7 だけの設定）
+    public const string NagasakiSyncedAt = "nagasaki_synced_at";  // 大学の情報を最後に読み込めた日時
+    public const string NagasakiStatus = "nagasaki_status";       // 前回の自動更新の結果（設定画面に出す 1 行）
     // 背景画像を出す場所（v7 だけの設定。1 / 0）
     public const string BackgroundBanner = "background_on_banner"; // ホームの上帯
     public const string BackgroundWindow = "background_on_window"; // 窓全体

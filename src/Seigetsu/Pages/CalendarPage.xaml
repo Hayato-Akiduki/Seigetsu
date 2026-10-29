@@ -63,9 +63,14 @@
                 <TextBlock Text="カレンダー" Style="{StaticResource PageTitle}" />
                 <TextBlock Text="締切日を設定したタスクが表示されます" Style="{StaticResource Muted}" FontSize="14" Margin="0,4,0,0" />
             </StackPanel>
-            <ui:Button HorizontalAlignment="Right" VerticalAlignment="Center" Appearance="Primary"
-                       Content="この日にタスクを追加" Icon="{ui:SymbolIcon Add24}" Padding="16,9"
-                       Click="OnAddClick" />
+            <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                <!-- 長崎大学モードのときだけ出す -->
+                <ui:Button x:Name="NagasakiButton" Content="大学の情報を更新" Icon="{ui:SymbolIcon ArrowSync24}"
+                           Padding="16,9" Margin="0,0,8,0" Click="OnNagasakiClick" Visibility="Collapsed"
+                           ToolTip="NU-Web の時間割と LACS の課題を今すぐ読み込みます（ふだんは自動で更新します）" />
+                <ui:Button Appearance="Primary" Content="この日にタスクを追加" Icon="{ui:SymbolIcon Add24}" Padding="16,9"
+                           Click="OnAddClick" />
+            </StackPanel>
         </Grid>
 
         <!-- 月の表示 -->
@@ -117,6 +122,41 @@
                 <TextBlock x:Name="DaySub" Grid.Row="1" Style="{StaticResource Muted}" FontSize="12" Margin="0,4,0,10" />
                 <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
                     <StackPanel>
+                        <!-- 時間割（長崎大学モードで取り込んだもの）。その曜日の授業 -->
+                        <StackPanel x:Name="ClassesPanel" Visibility="Collapsed" Margin="0,0,0,10">
+                            <TextBlock Text="授業" FontSize="13" FontWeight="Bold" Foreground="{DynamicResource MutedBrush}"
+                                       Margin="0,0,0,6" />
+                            <ItemsControl x:Name="DayClasses">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border CornerRadius="10" Padding="10,6" Margin="0,0,4,6" BorderThickness="3,0,0,0"
+                                                BorderBrush="{DynamicResource AccentBrush}" Background="{DynamicResource SubtleBrush}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Width="64" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding PeriodText}" FontSize="13" FontWeight="Bold"
+                                                               Foreground="{DynamicResource AccentBrush}" />
+                                                    <TextBlock Text="{Binding TimeText}" FontSize="10"
+                                                               Foreground="{DynamicResource MutedBrush}" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Slot.Title}" FontSize="14" TextTrimming="CharacterEllipsis"
+                                                               Foreground="{DynamicResource TextBrush}" ToolTip="{Binding Slot.Title}" />
+                                                    <TextBlock Text="{Binding Slot.Detail}" FontSize="11" TextTrimming="CharacterEllipsis"
+                                                               Foreground="{DynamicResource MutedBrush}" Visibility="{Binding DetailVisibility}"
+                                                               ToolTip="{Binding Slot.Detail}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="締切のタスク" FontSize="13" FontWeight="Bold" Foreground="{DynamicResource MutedBrush}"
+                                       Margin="0,8,0,0" />
+                        </StackPanel>
                         <TextBlock x:Name="NoTasksText" Text="この日が締切のタスクはありません。" Style="{StaticResource Muted}"
                                    HorizontalAlignment="Center" Margin="0,40,0,0" Visibility="Collapsed" />
                         <ItemsControl x:Name="DayTasks">

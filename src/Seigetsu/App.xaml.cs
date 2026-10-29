@@ -25,6 +25,9 @@ public partial class App : Application
     /// <summary>天気（ホームに出す）。</summary>
     public static WeatherService Weather { get; private set; } = null!;
 
+    /// <summary>長崎大学モードの自動更新（時間割と LACS の課題）。</summary>
+    public static NagasakiSync Nagasaki { get; private set; } = null!;
+
     private SingleInstance? _instance;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -57,6 +60,7 @@ public partial class App : Application
         Updates = new UpdateService();
         DesktopStickies = new DesktopStickies();
         Weather = new WeatherService();
+        Nagasaki = new NagasakiSync();
 
         var main = new MainWindow();
         if (AutoStart.LaunchedAtStartup)
@@ -76,6 +80,7 @@ public partial class App : Application
         // 前回デスクトップに出していた付箋を、同じ場所に出し直す
         DesktopStickies.Refresh();
         Weather.Start();
+        Nagasaki.Start();
         _instance.ListenForShow(Dispatcher, main.ShowFromTray);
         Updates.Start(Dispatcher);
 

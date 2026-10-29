@@ -17,6 +17,9 @@ public sealed record Memo(long Id, string Title, string Body, string CreatedAt, 
 /// <summary>デスクトップに出している付箋 1 枚の、窓の位置と大きさ。</summary>
 public sealed record DesktopSticky(long StickyId, double X, double Y, double Width, double Height, bool Topmost);
 
+/// <summary>時間割の 1 コマ。Weekday は 1=月 〜 6=土、Period は何限目か。TimeText は「8:50～10:20」など（分からなければ空）。</summary>
+public sealed record ClassSlot(int Weekday, int Period, string Title, string Detail, string TimeText);
+
 /// <summary>掲示板に貼ったもの 1 枚。Kind は "memo" / "sticky" / "task"、RefId はそれぞれの id。</summary>
 public sealed record BoardItem(long Id, string Kind, long RefId, double X, double Y, long Z);
 
@@ -198,6 +201,22 @@ public sealed class SeigetsuDatabase
                 width REAL NOT NULL,
                 height REAL NOT NULL,
                 topmost INTEGER NOT NULL DEFAULT 0)
+            """);
+        // 長崎大学モード（v7 で追加）。NU-Web から取り込んだ時間割（weekday は 1=月 〜 6=土）
+        Run("""
+            CREATE TABLE IF NOT EXISTS nu_timetable (
+                weekday INTEGER NOT NULL,
+                period INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                detail TEXT NOT NULL DEFAULT '',
+                time_text TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (weekday, period))
+            """);
+        // LACS から取り込んだ課題と、それで作ったタスクの対応（同じ課題を二重に足さないため）
+        Run("""
+            CREATE TABLE IF NOT EXISTS nu_lacs_tasks (
+                item_id TEXT PRIMARY KEY,
+                task_id INTEGER NOT NULL)
             """);
         Run("""
             CREATE TABLE IF NOT EXISTS settings (
@@ -618,6 +637,75 @@ public sealed class SeigetsuDatabase
     /// <summary>掲示板からはがす（付箋やタスクそのものは消さない）。</summary>
     public void UnpinBoardItem(long id) =>
         Execute("DELETE FROM board_items WHERE id = $id", ("$id", id));
+
+    // ---- 長崎大学モード -------------------------------------------------
+    /// <summary>時間割を丸ごと入れ替える。</summary>
+    public void ReplaceTimetable(IEnumerable<ClassSlot> slots)
+    {
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+        using (var clear = connection.CreateCommand())
+        {
+            clear.Transaction = transaction;
+            clear.CommandText = "DELETE FROM nu_timetable";
+            clear.ExecuteNonQuery();
+        }
+        foreach (var slot in slots)
+        {
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                INSERT OR REPLACE INTO nu_timetable (weekday, period, title, detail, time_text)
+                VALUES ($day, $period, $title, $detail, $time)
+                """;
+            command.Parameters.AddWithValue("$day", slot.Weekday);
+            command.Parameters.AddWithValue("$period", slot.Period);
+            command.Parameters.AddWithValue("$title", slot.Title);
+            command.Parameters.AddWithValue("$detail", slot.Detail);
+            command.Parameters.AddWithValue("$time", slot.TimeText);
+            command.ExecuteNonQuery();
+        }
+        transaction.Commit();
+    }
+
+    public void ClearTimetable() => Execute("DELETE FROM nu_timetable");
+
+    /// <summary>時間割。weekday を指定すると、その曜日（1=月 〜 6=土）だけ。</summary>
+    public IReadOnlyList<ClassSlot> GetTimetable(int? weekday = null)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT weekday, period, title, detail, time_text FROM nu_timetable"
+                              + (weekday is null ? "" : " WHERE weekday = $day")
+                              + " ORDER BY weekday, period";
+        if (weekday is { } day)
+            command.Parameters.AddWithValue("$day", day);
+        var slots = new List<ClassSlot>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            slots.Add(new ClassSlot(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2),
+                reader.GetString(3), reader.GetString(4)));
+        return slots;
+    }
+
+    /// <summary>
+    /// LACS の課題 1 件をタスクにする。初めてならタスクを足し、取り込み済みなら題名と締切だけ合わせる
+    /// （完了の印や優先度など、自分で変えたところはそのまま）。足したら true。
+    /// 取り込んだあとに自分でタスクを消していたら、もう一度は足さない。
+    /// </summary>
+    public bool UpsertLacsTask(string itemId, string title, string dueDate)
+    {
+        var existing = Scalar("SELECT task_id FROM nu_lacs_tasks WHERE item_id = $item", ("$item", itemId));
+        if (existing is not null)
+        {
+            Execute("UPDATE tasks SET title = $title, due_date = $due WHERE id = $id",
+                ("$title", title), ("$due", dueDate), ("$id", Convert.ToInt64(existing)));
+            return false;
+        }
+        var taskId = AddTask(title, "中", dueDate, "LACS");
+        Execute("INSERT INTO nu_lacs_tasks (item_id, task_id) VALUES ($item, $task)", ("$item", itemId), ("$task", taskId));
+        return true;
+    }
 
     // ---- 作業記録 -----------------------------------------------------
     /// <summary>計った時間を記録する。5 秒未満は押し間違いとみなして記録しない（v6 と同じ）。</summary>

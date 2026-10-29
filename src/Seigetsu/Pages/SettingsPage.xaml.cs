@@ -25,12 +25,14 @@ public partial class SettingsPage : UserControl, IRefreshable
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         App.Updates.Changed += UpdateUpdateSection;
+        App.Nagasaki.Changed += OnNagasakiChanged;
         Refresh();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         App.Updates.Changed -= UpdateUpdateSection;
+        App.Nagasaki.Changed -= OnNagasakiChanged;
     }
 
     private void UpdateUpdateSection()
@@ -68,6 +70,19 @@ public partial class SettingsPage : UserControl, IRefreshable
         var dueNotify = db.GetSetting(SettingKeys.DueNotify, "1");
         DueNotifyList.SelectedItem = DueNotifyList.Items.Cast<ListBoxItem>().FirstOrDefault(i => (string)i.Tag == dueNotify)
                                      ?? DueNotifyList.Items[0];
+
+        var nagasaki = db.GetSetting(SettingKeys.NagasakiMode, "0");
+        NagasakiModeList.SelectedItem = NagasakiModeList.Items.Cast<ListBoxItem>().FirstOrDefault(i => (string)i.Tag == nagasaki)
+                                        ?? NagasakiModeList.Items[1];
+        NagasakiPanel.Visibility = nagasaki == "1" ? Visibility.Visible : Visibility.Collapsed;
+        // 「追加の機能」は、ふだんは畳んでおく。長崎大学モードを使っている人には開いて見せる
+        if (nagasaki == "1")
+            ExtrasExpander.IsExpanded = true;
+        var classes = db.GetTimetable().Count;
+        NagasakiSyncButton.IsEnabled = !App.Nagasaki.IsRunning;
+        NagasakiSyncButton.Content = App.Nagasaki.IsRunning ? "更新しています…" : "今すぐ更新";
+        NagasakiStatusText.Text = "前回の更新：" + NagasakiSync.LastStatus;
+        ClearTimetableButton.IsEnabled = classes > 0;
 
         var latest = DailyBackup.Latest;
         DailyBackupText.Text = $"毎日の自動バックアップ：{DailyBackup.Folder}（新しい方から {DailyBackup.Keep} 日分を残します。"
@@ -162,6 +177,41 @@ public partial class SettingsPage : UserControl, IRefreshable
         if (_loading || !IsLoaded || DueNotifyList.SelectedItem is not ListBoxItem item)
             return;
         App.Database.SetSetting(SettingKeys.DueNotify, (string)item.Tag);
+    }
+
+    private void OnNagasakiModeChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || !IsLoaded || NagasakiModeList.SelectedItem is not ListBoxItem item)
+            return;
+        App.Database.SetSetting(SettingKeys.NagasakiMode, (string)item.Tag);
+        Refresh();
+        // オンにしたらすぐ更新する（初めてでログインがまだなら、ログインの窓が開く）
+        if ((string)item.Tag == "1")
+            Main.UpdateNagasakiNow();
+    }
+
+    private void OnNagasakiSyncClick(object sender, RoutedEventArgs e) => Main.UpdateNagasakiNow();
+
+    private void OnNagasakiLoginClick(object sender, RoutedEventArgs e) => Main.OpenNagasakiLogin();
+
+    // 更新が始まった・終わったときに、ボタンと結果の文を合わせる
+    private void OnNagasakiChanged() => Dispatcher.BeginInvoke(Refresh);
+
+    private async void OnClearTimetableClick(object sender, RoutedEventArgs e)
+    {
+        var result = await new Wpf.Ui.Controls.MessageBox
+        {
+            Title = "時間割を消す",
+            Content = "取り込んだ時間割を消しますか？（タスクは消えません）",
+            PrimaryButtonText = "消す",
+            CloseButtonText = "やめる",
+            Owner = Main,
+        }.ShowDialogAsync();
+        if (result != Wpf.Ui.Controls.MessageBoxResult.Primary)
+            return;
+        App.Database.ClearTimetable();
+        Main.Notify("時間割を消しました。");
+        Refresh();
     }
 
     private void OnChooseBackgroundClick(object sender, RoutedEventArgs e)

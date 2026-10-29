@@ -12,6 +12,9 @@ namespace Seigetsu.Pages;
 public sealed record DayTaskView(
     TaskItem Task, Brush TitleBrush, TextDecorationCollection? TitleDecorations, string PriorityText, Brush PriorityBrush);
 
+/// <summary>右側の「授業」1 行分（長崎大学モード）。</summary>
+public sealed record DayClassView(ClassSlot Slot, string PeriodText, string TimeText, Visibility DetailVisibility);
+
 public partial class CalendarPage : UserControl, IRefreshable
 {
     private static readonly string[] WeekNames = ["日", "月", "火", "水", "木", "金", "土"];
@@ -92,6 +95,9 @@ public partial class CalendarPage : UserControl, IRefreshable
     }
 
     private void OnAddClick(object sender, RoutedEventArgs e) => Main.OpenTaskDialog(presetDue: Iso(_selected));
+
+    private void OnNagasakiClick(object sender, RoutedEventArgs e) =>
+        Main.UpdateNagasakiNow();
 
     private static TaskItem TaskOf(object sender) => ((DayTaskView)((FrameworkElement)sender).DataContext).Task;
 
@@ -182,6 +188,18 @@ public partial class CalendarPage : UserControl, IRefreshable
     private void RefreshDay()
     {
         DayTitle.Text = DateLabel(_selected);
+
+        // 長崎大学モード: その曜日の授業（日曜は無し）
+        var nagasaki = NagasakiUniversity.Enabled;
+        NagasakiButton.Visibility = nagasaki ? Visibility.Visible : Visibility.Collapsed;
+        var classes = nagasaki && _selected.DayOfWeek != DayOfWeek.Sunday
+            ? App.Database.GetTimetable((int)_selected.DayOfWeek)
+            : [];
+        ClassesPanel.Visibility = classes.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        DayClasses.ItemsSource = classes.Select(s => new DayClassView(
+            s, $"{s.Period}限", NagasakiUniversity.TimeOf(s),
+            s.Detail == "" ? Visibility.Collapsed : Visibility.Visible)).ToList();
+
         var tasks = App.Database.TasksOn(Iso(_selected));
         var openCount = tasks.Count(t => !t.Completed);
         DaySub.Text = tasks.Count > 0 ? $"締切のタスク {tasks.Count}件（未完了 {openCount}件）" : "";

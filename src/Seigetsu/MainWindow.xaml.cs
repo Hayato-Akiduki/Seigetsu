@@ -52,6 +52,7 @@ public partial class MainWindow : FluentWindow
     {
         _tray = new TrayIcon(onOpen: ShowFromTray, onQuit: QuitApp);
         App.Updates.UpdateReady += OnUpdateReady;
+        App.Nagasaki.Synced += OnNagasakiSynced;
         InitializeComponent();
         var version = Assembly.GetExecutingAssembly().GetName().Version;
         VersionText.Text = $"v{version?.ToString(3)}（C# 版・開発中）";
@@ -348,6 +349,54 @@ public partial class MainWindow : FluentWindow
             _calculator.Show();
         }
         _calculator.Activate();
+    }
+
+    private NagasakiWindow? _nagasaki;
+
+    /// <summary>長崎大学のログインの窓を開く（もう開いていれば前に出すだけ）。ログインが済むと自動で取り込む。</summary>
+    public void OpenNagasakiLogin()
+    {
+        if (_nagasaki is null)
+        {
+            _nagasaki = new NagasakiWindow { Owner = this };
+            _nagasaki.Closed += (_, _) => _nagasaki = null;
+            _nagasaki.Show();
+        }
+        _nagasaki.Activate();
+    }
+
+    /// <summary>
+    /// 大学の情報を今すぐ更新する（設定画面とカレンダーのボタンから）。ログインが切れていたら、ログインの窓を開く。
+    /// </summary>
+    public async void UpdateNagasakiNow()
+    {
+        if (_nagasaki is not null)
+        {
+            _nagasaki.Activate(); // ログインの途中なら、そちらで続けてもらう
+            return;
+        }
+        Notify("大学の情報を更新しています…");
+        var report = await App.Nagasaki.SyncAsync(userAsked: true);
+        if (report.NeedsLogin)
+            OpenNagasakiLogin();
+    }
+
+    // 自動更新のあと。ログインが切れたことは、続けて何度も知らせない（切れた最初の 1 回と、ボタンで頼まれたときだけ）
+    private bool _nagasakiLoginNotified;
+
+    private void OnNagasakiSynced(NagasakiReport report, bool userAsked)
+    {
+        DataChanged();
+        if (report.Error is { } error && userAsked)
+            Notify($"大学の情報を更新できませんでした。\n{error}", ControlAppearance.Danger, 6);
+        else if (report.NeedsLogin && _nagasaki is null && (userAsked || !_nagasakiLoginNotified))
+            Notify("長崎大学のサイトのログインが切れています。設定の「長崎大学モード」からログインしてください。",
+                ControlAppearance.Caution, 8);
+        else if (report.Added > 0)
+            Notify($"LACS の課題を {report.Added} 件タスクに追加しました。");
+        else if (userAsked && !report.NeedsLogin)
+            Notify("大学の情報を更新しました。");
+        _nagasakiLoginNotified = report.NeedsLogin;
     }
 
     /// <summary>文字数カウンターを開く（もう開いていれば前に出すだけ）。</summary>
