@@ -2,13 +2,13 @@
   霽月のインストーラーと更新ファイルを作る。
 
   使い方（SeigetsuCS フォルダで PowerShell を開いて）:
-    .\build-release.ps1 -Version 7.0.0            インストーラーを作るだけ（Releases フォルダにできる）
-    .\build-release.ps1 -Version 7.0.1 -Upload    作って GitHub Releases に公開する
+    .\build-release.ps1 -Version 1.0.0            インストーラーを作るだけ（Releases フォルダにできる）
+    .\build-release.ps1 -Version 1.0.1 -Upload    作って GitHub Releases に公開する
 
   -Upload のときは、GitHub のトークンを環境変数 GITHUB_TOKEN に入れておく（このファイルには書かない）。
     $env:GITHUB_TOKEN = "（自分で作ったトークン）"
 
-  版の番号は、前に出した版より大きくする（例: 7.0.0 → 7.0.1）。
+  版の番号は、前に出した版より大きくする（例: 1.0.0 → 1.0.1）。
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Version,
