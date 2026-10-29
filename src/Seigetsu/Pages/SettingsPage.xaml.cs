@@ -58,6 +58,9 @@ public partial class SettingsPage : UserControl, IRefreshable
         CloseActionList.SelectedItem = CloseActionList.Items.Cast<ListBoxItem>().FirstOrDefault(i => (string)i.Tag == closeAction)
                                        ?? CloseActionList.Items[0];
 
+        // 自動起動はデータベースではなく Windows 側に入っているので、そちらを見る
+        AutoStartList.SelectedIndex = AutoStart.IsEnabled ? 0 : 1;
+
         FillMinutes(WorkBox, WorkChoices, db.GetIntSetting(SettingKeys.WorkMinutes, 25));
         FillMinutes(BreakBox, BreakChoices, db.GetIntSetting(SettingKeys.BreakMinutes, 5));
         CityBox.Text = WeatherService.City;
@@ -122,6 +125,22 @@ public partial class SettingsPage : UserControl, IRefreshable
         if (_loading || !IsLoaded || CloseActionList.SelectedItem is not ListBoxItem item)
             return;
         App.Database.SetSetting(SettingKeys.CloseAction, (string)item.Tag);
+    }
+
+    private void OnAutoStartChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || !IsLoaded || AutoStartList.SelectedItem is not ListBoxItem item)
+            return;
+        var enabled = (string)item.Tag == "1";
+        if (AutoStart.SetEnabled(enabled))
+        {
+            Main.Notify(enabled ? "Windows の起動時に、霽月が自動で起動するようにしました。" : "自動で起動しないようにしました。");
+            return;
+        }
+        Main.Notify("自動起動の設定を変えられませんでした。", Wpf.Ui.Controls.ControlAppearance.Danger, 6);
+        _loading = true;
+        AutoStartList.SelectedIndex = AutoStart.IsEnabled ? 0 : 1;
+        _loading = false;
     }
 
     private void OnWorkChanged(object sender, SelectionChangedEventArgs e) =>

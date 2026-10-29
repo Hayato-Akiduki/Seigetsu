@@ -419,17 +419,20 @@ public partial class MainWindow : FluentWindow
             page.OnTimerTick();
     }
 
-    private void OnPhaseFinished(TimerPhase finished)
+    private void OnPhaseFinished(TimerFinish finished)
     {
-        var message = finished == TimerPhase.Work
-            ? "作業時間が終わりました。少し休憩しましょう。"
-            : "休憩が終わりました。次の作業を始めましょう。";
+        var message = finished switch
+        {
+            TimerFinish.Work => "作業時間が終わりました。少し休憩しましょう。",
+            TimerFinish.Break => "休憩が終わりました。次の作業を始めましょう。",
+            _ => $"タイマー（{FocusTimer.LengthLabel(App.Timer.CountdownSeconds)}）が終わりました。",
+        };
         Notify(message, ControlAppearance.Success, 8);
         SystemSounds.Asterisk.Play();
         // ほかのアプリを使っているときやタスクトレイに隠れているときは、Windows の通知でも知らせる
         if (!IsActive)
         {
-            _tray.Notify("霽月 - 集中タイマー", message);
+            _tray.Notify(finished == TimerFinish.Countdown ? "霽月 - タイマー" : "霽月 - 集中タイマー", message);
             if (IsVisible)
                 FlashTaskbar();
         }
@@ -439,7 +442,7 @@ public partial class MainWindow : FluentWindow
     private void UpdateMiniTimer()
     {
         var timer = App.Timer;
-        MiniStatus.Text = $"{(timer.IsPomodoro ? "ポモドーロ" : "ストップウォッチ")} ・ {timer.Status()}";
+        MiniStatus.Text = $"{timer.ModeName} ・ {timer.Status()}";
         MiniTime.Text = timer.Display();
         if (_miniRunning != timer.Running)
         {

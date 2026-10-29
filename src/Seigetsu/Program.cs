@@ -11,7 +11,10 @@ public static class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        VelopackApp.Build().Run();
+        VelopackApp.Build()
+            // アンインストールするときは、自動起動の設定も消しておく（消したあとに起動しようとしないように）
+            .OnBeforeUninstallFastCallback(_ => Services.AutoStart.SetEnabled(false))
+            .Run();
 
         var app = new App();
         app.InitializeComponent();

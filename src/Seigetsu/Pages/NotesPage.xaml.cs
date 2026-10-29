@@ -79,9 +79,23 @@ public partial class NotesPage : UserControl, ISavable
 
     public static string DisplayTitleOf(string title) => string.IsNullOrWhiteSpace(title) ? "無題のメモ" : title.Trim();
 
+    /// <summary>次に開いたとき、名前の欄を選んだ状態にする（掲示板で新しいメモを作ったときなど）。</summary>
+    public static bool FocusTitleOnOpen { get; set; }
+
     // 開くたびにデータベースから読み直す（v6 で書きかえられていても最新を出す）
-    private void OnLoaded(object sender, RoutedEventArgs e) =>
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
         Reload(App.Database.GetIntSetting(SelectedSetting, 1));
+        if (!FocusTitleOnOpen)
+            return;
+        FocusTitleOnOpen = false;
+        // 画面が出きってから選ぶ
+        Dispatcher.BeginInvoke(() =>
+        {
+            TitleBox.Focus();
+            TitleBox.SelectAll();
+        }, DispatcherPriority.Input);
+    }
 
     // ほかの画面に移るときは保存しておく
     private void OnUnloaded(object sender, RoutedEventArgs e) => Flush();

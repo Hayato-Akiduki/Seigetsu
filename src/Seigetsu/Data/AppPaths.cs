@@ -28,6 +28,7 @@ public static class SettingKeys
     public const string City = "weather_city";
     public const string WorkMinutes = "pomodoro_work_min";
     public const string BreakMinutes = "pomodoro_break_min";
+    public const string CountdownSeconds = "countdown_seconds";     // 普通のタイマーの長さ（秒。v7 だけの設定）
     public const string CloseAction = "close_action";     // quit / tray
     public const string Volume = "music_volume";
     public const string SidebarCollapsed = "sidebar_collapsed"; // 1 / 0（v7 だけの設定）

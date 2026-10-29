@@ -441,11 +441,23 @@ public partial class BoardPage : UserControl, IRefreshable
         menu.Items.Add(tasks);
 
         menu.Items.Add(new Separator());
+        menu.Items.Add(MenuEntry("新しいメモを作って貼る…", SymbolRegular.Add24, () => AddMemo(at)));
         menu.Items.Add(MenuEntry("新しい付箋を書いて貼る…", SymbolRegular.Add24,
             () => Main.OpenStickyDialog(onAdded: id => App.Database.PinToBoard("sticky", id, at.X, at.Y))));
         menu.Items.Add(MenuEntry("新しいタスクを作って貼る…", SymbolRegular.Add24,
             () => Main.OpenTaskDialog(onAdded: id => App.Database.PinToBoard("task", id, at.X, at.Y))));
         return menu;
+    }
+
+    /// <summary>新しいメモを作って貼り、すぐ名前と本文を書けるようにメモの画面で開く。</summary>
+    private void AddMemo(Point at)
+    {
+        var id = App.Database.AddMemo("新しいメモ");
+        App.Database.PinToBoard("memo", id, Math.Max(0, at.X), Math.Max(0, at.Y));
+        App.Database.SetSetting(NotesPage.SelectedSetting, id.ToString());
+        NotesPage.FocusTitleOnOpen = true;
+        Main.ShowPage("notes");
+        Main.Notify("新しいメモを作って、掲示板に貼りました。");
     }
 
     private void Pin(string kind, long refId, Point at)

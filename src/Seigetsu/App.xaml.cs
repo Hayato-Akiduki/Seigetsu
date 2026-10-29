@@ -59,7 +59,20 @@ public partial class App : Application
         Weather = new WeatherService();
 
         var main = new MainWindow();
-        main.Show();
+        if (AutoStart.LaunchedAtStartup)
+        {
+            // Windows の起動で自動に立ち上がったときは、作業のじゃまにならないよう小さくしておく
+            main.WindowState = WindowState.Minimized;
+            main.ShowActivated = false;
+            main.Show();
+            // × でタスクトレイに隠す設定なら、タスクトレイだけに置いておく
+            if (Database.GetSetting(SettingKeys.CloseAction, "quit") == "tray")
+                main.Hide();
+        }
+        else
+        {
+            main.Show();
+        }
         // 前回デスクトップに出していた付箋を、同じ場所に出し直す
         DesktopStickies.Refresh();
         Weather.Start();

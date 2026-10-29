@@ -65,7 +65,7 @@ public partial class ClockWindow : Window
         var timer = App.Timer;
         if (timer.Running)
         {
-            TimerText.Text = $"{(timer.IsPomodoro ? "ポモドーロ" : "ストップウォッチ")} ・ {timer.Status()}  {timer.Display()}";
+            TimerText.Text = $"{timer.ModeName} ・ {timer.Status()}  {timer.Display()}";
             TimerText.Visibility = Visibility.Visible;
         }
         else

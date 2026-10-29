@@ -126,6 +126,20 @@
                     </StackPanel>
                 </Border>
 
+                <!-- Windows の起動時 -->
+                <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="Windows の起動時" Style="{StaticResource CardTitle}" Margin="0,0,0,2" />
+                        <TextBlock Style="{StaticResource Muted}" FontSize="12" Margin="0,0,0,12" TextWrapping="Wrap"
+                                   Text="Windows にサインインしたときに、霽月を自動で起動します。起動した霽月は最小化しておきます（× ボタンを「タスクトレイに格納する」にしているときは、タスクトレイに入れておきます）。" />
+                        <ListBox x:Name="AutoStartList" Style="{StaticResource SegmentedList}" HorizontalAlignment="Left"
+                                 SelectionChanged="OnAutoStartChanged">
+                            <ListBoxItem Content="自動で起動する" Tag="1" />
+                            <ListBoxItem Content="起動しない" Tag="0" />
+                        </ListBox>
+                    </StackPanel>
+                </Border>
+
                 <!-- 天気 -->
                 <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                     <StackPanel>
