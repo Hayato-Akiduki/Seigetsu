@@ -17,8 +17,32 @@ public sealed record Memo(long Id, string Title, string Body, string CreatedAt, 
 /// <summary>デスクトップに出している付箋 1 枚の、窓の位置と大きさ。</summary>
 public sealed record DesktopSticky(long StickyId, double X, double Y, double Width, double Height, bool Topmost);
 
-/// <summary>時間割の 1 コマ。Weekday は 1=月 〜 6=土、Period は何限目か。TimeText は「8:50～10:20」など（分からなければ空）。</summary>
-public sealed record ClassSlot(int Weekday, int Period, string Title, string Detail, string TimeText);
+/// <summary>
+/// 時間割の 1 コマ。Weekday は 1=月 〜 6=土、Period は何限目か。TimeText は「8:50～10:20」など（分からなければ空）。
+/// Room は教室（シラバスから読む。分からなければ空）、Codes は NU-Web の時間割コード（カンマ区切り）。
+/// </summary>
+public sealed record ClassSlot(int Weekday, int Period, string Title, string Detail, string TimeText,
+    string Room = "", string Codes = "");
+
+/// <summary>お知らせの出どころ。</summary>
+public static class AnnouncementSource
+{
+    public const string Lacs = "lacs";
+    public const string NuWeb = "nuweb";
+}
+
+/// <summary>
+/// 読み込んだお知らせ 1 件（残す前の形）。Source は AnnouncementSource、Id は出どころの中で一意な値。
+/// CourseName は LACS なら授業名、NU-Web なら掲示の分類や差出人。Url は開くためのアドレス（無ければ空）。
+/// </summary>
+/// Body が null のときは、本文を読んでいない（残してあるものは本文をそのままにし、まだ無いものは足さない）。
+public sealed record AnnouncementInput(
+    string Source, string Id, string CourseId, string CourseName, string Title, string? Body, DateTime Created, string Url);
+
+/// <summary>残してあるお知らせ 1 件（LACS の連絡事項と NU-Web の掲示）。Seen は霽月で読んだかどうか。</summary>
+public sealed record AnnouncementItem(
+    string Id, string Source, string CourseId, string CourseName, string Title, string Body, DateTime Created, string Url,
+    bool Seen);
 
 /// <summary>掲示板に貼ったもの 1 枚。Kind は "memo" / "sticky" / "task"、RefId はそれぞれの id。</summary>
 public sealed record BoardItem(long Id, string Kind, long RefId, double X, double Y, long Z);
@@ -210,7 +234,31 @@ public sealed class SeigetsuDatabase
                 title TEXT NOT NULL,
                 detail TEXT NOT NULL DEFAULT '',
                 time_text TEXT NOT NULL DEFAULT '',
+                room TEXT NOT NULL DEFAULT '',
+                codes TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (weekday, period))
+            """);
+        // 教室（room）と時間割コード（codes、カンマ区切り）は後から足した列。前の形の表には足す
+        var timetableColumns = new HashSet<string>();
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = "PRAGMA table_info(nu_timetable)";
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+                timetableColumns.Add(reader.GetString(1));
+        }
+        foreach (var name in new[] { "room", "codes" })
+        {
+            if (!timetableColumns.Contains(name))
+                Run($"ALTER TABLE nu_timetable ADD COLUMN {name} TEXT NOT NULL DEFAULT ''");
+        }
+        // シラバスから読んだ教室（時間割コードごと）。シラバスは読むのに時間がかかるので、覚えておいて 1 週間ごとに読み直す
+        Run("""
+            CREATE TABLE IF NOT EXISTS nu_rooms (
+                code TEXT PRIMARY KEY,
+                room TEXT NOT NULL,
+                checked_at TEXT NOT NULL)
             """);
         // LACS から取り込んだ課題と、それで作ったタスクの対応（同じ課題を二重に足さないため）
         Run("""
@@ -218,6 +266,31 @@ public sealed class SeigetsuDatabase
                 item_id TEXT PRIMARY KEY,
                 task_id INTEGER NOT NULL)
             """);
+        // お知らせ（LACS の連絡事項と NU-Web の掲示。自動更新のたびに読んで残す）。seen は霽月で読んだかどうか。
+        // 表の名前は、はじめ LACS だけを入れていたときのまま。source（出どころ）と url は後から足した列
+        Run("""
+            CREATE TABLE IF NOT EXISTS nu_lacs_announcements (
+                id TEXT PRIMARY KEY,
+                course_id TEXT NOT NULL,
+                course_name TEXT NOT NULL,
+                title TEXT NOT NULL,
+                body TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                seen INTEGER NOT NULL DEFAULT 0)
+            """);
+        var announcementColumns = new HashSet<string>();
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = "PRAGMA table_info(nu_lacs_announcements)";
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+                announcementColumns.Add(reader.GetString(1));
+        }
+        if (!announcementColumns.Contains("source"))
+            Run("ALTER TABLE nu_lacs_announcements ADD COLUMN source TEXT NOT NULL DEFAULT 'lacs'");
+        if (!announcementColumns.Contains("url"))
+            Run("ALTER TABLE nu_lacs_announcements ADD COLUMN url TEXT NOT NULL DEFAULT ''");
         Run("""
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -330,6 +403,23 @@ public sealed class SeigetsuDatabase
         command.Parameters.AddWithValue("$limit", limit);
         return ReadTasks(command);
     }
+
+    /// <summary>大学ページ用: LACS から取り込んだ課題のうち、まだ完了していないもの（締切の近い順）。</summary>
+    public IReadOnlyList<TaskItem> OpenLacsTasks()
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT {TaskColumns} FROM tasks
+            WHERE completed = 0 AND id IN (SELECT task_id FROM nu_lacs_tasks)
+            ORDER BY CASE WHEN due_date = '' THEN 1 ELSE 0 END, due_date, id
+            """;
+        return ReadTasks(command);
+    }
+
+    /// <summary>LACS から取り込んだタスクの、もとの課題（「授業の id/成績表の列の id」）。LACS の課題でなければ null。</summary>
+    public string? LacsItemOfTask(long taskId) =>
+        Scalar("SELECT item_id FROM nu_lacs_tasks WHERE task_id = $task", ("$task", taskId)) as string;
 
     /// <summary>カレンダー用: その日が締切のタスク。</summary>
     public IReadOnlyList<TaskItem> TasksOn(string day)
@@ -655,14 +745,16 @@ public sealed class SeigetsuDatabase
             using var command = connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandText = """
-                INSERT OR REPLACE INTO nu_timetable (weekday, period, title, detail, time_text)
-                VALUES ($day, $period, $title, $detail, $time)
+                INSERT OR REPLACE INTO nu_timetable (weekday, period, title, detail, time_text, room, codes)
+                VALUES ($day, $period, $title, $detail, $time, $room, $codes)
                 """;
             command.Parameters.AddWithValue("$day", slot.Weekday);
             command.Parameters.AddWithValue("$period", slot.Period);
             command.Parameters.AddWithValue("$title", slot.Title);
             command.Parameters.AddWithValue("$detail", slot.Detail);
             command.Parameters.AddWithValue("$time", slot.TimeText);
+            command.Parameters.AddWithValue("$room", slot.Room);
+            command.Parameters.AddWithValue("$codes", slot.Codes);
             command.ExecuteNonQuery();
         }
         transaction.Commit();
@@ -675,7 +767,7 @@ public sealed class SeigetsuDatabase
     {
         using var connection = Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT weekday, period, title, detail, time_text FROM nu_timetable"
+        command.CommandText = "SELECT weekday, period, title, detail, time_text, room, codes FROM nu_timetable"
                               + (weekday is null ? "" : " WHERE weekday = $day")
                               + " ORDER BY weekday, period";
         if (weekday is { } day)
@@ -684,27 +776,152 @@ public sealed class SeigetsuDatabase
         using var reader = command.ExecuteReader();
         while (reader.Read())
             slots.Add(new ClassSlot(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2),
-                reader.GetString(3), reader.GetString(4)));
+                reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6)));
         return slots;
     }
 
+    /// <summary>覚えている教室（時間割コード → 教室）。checkedSince より前に読んだものは「読み直す」側に入れる。</summary>
+    public (Dictionary<string, string> Rooms, HashSet<string> Fresh) GetRooms(DateTime checkedSince)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT code, room, checked_at FROM nu_rooms";
+        var rooms = new Dictionary<string, string>();
+        var fresh = new HashSet<string>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            rooms[reader.GetString(0)] = reader.GetString(1);
+            if (DateTime.TryParse(reader.GetString(2), out var at) && at >= checkedSince)
+                fresh.Add(reader.GetString(0));
+        }
+        return (rooms, fresh);
+    }
+
+    public void SaveRoom(string code, string room) =>
+        Execute("INSERT OR REPLACE INTO nu_rooms (code, room, checked_at) VALUES ($code, $room, $now)",
+            ("$code", code), ("$room", room), ("$now", Now));
+
     /// <summary>
     /// LACS の課題 1 件をタスクにする。初めてならタスクを足し、取り込み済みなら題名と締切だけ合わせる
-    /// （完了の印や優先度など、自分で変えたところはそのまま）。足したら true。
+    /// （優先度など、自分で変えたところはそのまま）。足したら true。
+    /// LACS で提出済み（submitted）なら完了にする。未提出に戻っても、自分で付けた完了の印は外さない。
     /// 取り込んだあとに自分でタスクを消していたら、もう一度は足さない。
     /// </summary>
-    public bool UpsertLacsTask(string itemId, string title, string dueDate)
+    public bool UpsertLacsTask(string itemId, string title, string dueDate, bool submitted)
     {
         var existing = Scalar("SELECT task_id FROM nu_lacs_tasks WHERE item_id = $item", ("$item", itemId));
         if (existing is not null)
         {
+            var id = Convert.ToInt64(existing);
             Execute("UPDATE tasks SET title = $title, due_date = $due WHERE id = $id",
-                ("$title", title), ("$due", dueDate), ("$id", Convert.ToInt64(existing)));
+                ("$title", title), ("$due", dueDate), ("$id", id));
+            if (submitted)
+                SetTaskCompleted(id, true);
             return false;
         }
         var taskId = AddTask(title, "中", dueDate, "LACS");
+        if (submitted)
+            SetTaskCompleted(taskId, true);
         Execute("INSERT INTO nu_lacs_tasks (item_id, task_id) VALUES ($item, $task)", ("$item", itemId), ("$task", taskId));
         return true;
+    }
+
+    // ---- お知らせ（LACS の連絡事項と NU-Web の掲示） ------------------
+    // id は出どころ（source）ごとに一意なので、表では「source:id」の形で持つ（LACS の分は前からの id のまま）
+    private static string StoredId(string source, string id) => source == AnnouncementSource.Lacs ? id : $"{source}:{id}";
+
+    /// <summary>
+    /// 読んだお知らせを残す。新しいものは足し、残してあるものは題名と本文などだけ合わせる（読んだ印はそのまま）。
+    /// その出どころを初めて読み込むとき（まだ 1 件も無いとき）は、前からあるものをすべて読んだことにする
+    /// （いきなり何十件も新着にしない）。新しく足した数を返す。
+    /// </summary>
+    public int SaveAnnouncements(string source, IEnumerable<AnnouncementInput> announcements)
+    {
+        var first = Convert.ToInt64(Scalar("SELECT COUNT(*) FROM nu_lacs_announcements WHERE source = $source",
+            ("$source", source))) == 0;
+        var added = 0;
+        foreach (var a in announcements)
+        {
+            var id = StoredId(source, a.Id);
+            var created = a.Created.ToString("yyyy-MM-ddTHH:mm:ss");
+            var changed = Execute("""
+                UPDATE nu_lacs_announcements
+                SET title = $title, body = COALESCE($body, body), course_id = $courseId, course_name = $course,
+                    created_at = $at, url = $url
+                WHERE id = $id
+                """, ("$id", id), ("$title", a.Title), ("$body", (object?)a.Body ?? DBNull.Value), ("$courseId", a.CourseId),
+                ("$course", a.CourseName), ("$at", created), ("$url", a.Url));
+            if (changed > 0 || a.Body is null)
+                continue;
+            Execute("""
+                INSERT INTO nu_lacs_announcements (id, source, course_id, course_name, title, body, created_at, url, seen)
+                VALUES ($id, $source, $courseId, $course, $title, $body, $at, $url, $seen)
+                """, ("$id", id), ("$source", source), ("$courseId", a.CourseId), ("$course", a.CourseName),
+                ("$title", a.Title), ("$body", a.Body), ("$at", created), ("$url", a.Url), ("$seen", first ? 1 : 0));
+            added++;
+        }
+        return first ? 0 : added;
+    }
+
+    /// <summary>その出どころで残してあるお知らせの id（SaveAnnouncements に渡した形のまま）。</summary>
+    public HashSet<string> AnnouncementIds(string source)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id FROM nu_lacs_announcements WHERE source = $source";
+        command.Parameters.AddWithValue("$source", source);
+        var prefix = source == AnnouncementSource.Lacs ? "" : source + ":";
+        var ids = new HashSet<string>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var id = reader.GetString(0);
+            ids.Add(id.StartsWith(prefix, StringComparison.Ordinal) ? id[prefix.Length..] : id);
+        }
+        return ids;
+    }
+
+    /// <summary>残してあるお知らせを、新しい順に。</summary>
+    public IReadOnlyList<AnnouncementItem> GetAnnouncements(int limit = 500)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, source, course_id, course_name, title, body, created_at, url, seen FROM nu_lacs_announcements
+            ORDER BY created_at DESC, id DESC LIMIT $limit
+            """;
+        command.Parameters.AddWithValue("$limit", limit);
+        var list = new List<AnnouncementItem>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            // 分類や差出人は 1 行で出す（前の版が残した改行や続いた空白は詰める）
+            list.Add(new AnnouncementItem(reader.GetString(0), reader.GetString(1), OneLine(reader.GetString(2)),
+                OneLine(reader.GetString(3)),
+                reader.GetString(4), reader.GetString(5),
+                DateTime.TryParse(reader.GetString(6), out var at) ? at : DateTime.MinValue,
+                reader.GetString(7), reader.GetInt64(8) != 0));
+        }
+        return list;
+    }
+
+    private static string OneLine(string text) =>
+        System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ").Trim();
+
+    /// <summary>まだ読んでいないお知らせの数。</summary>
+    public int UnseenAnnouncementCount() =>
+        Convert.ToInt32(Scalar("SELECT COUNT(*) FROM nu_lacs_announcements WHERE seen = 0"));
+
+    /// <summary>お知らせ 1 件を読んだことにする（id が null なら、source の分すべて。source も null なら全部）。</summary>
+    public void MarkAnnouncementSeen(string? id, string? source = null)
+    {
+        if (id is not null)
+            Execute("UPDATE nu_lacs_announcements SET seen = 1 WHERE id = $id", ("$id", id));
+        else if (source is not null)
+            Execute("UPDATE nu_lacs_announcements SET seen = 1 WHERE seen = 0 AND source = $source", ("$source", source));
+        else
+            Execute("UPDATE nu_lacs_announcements SET seen = 1 WHERE seen = 0");
     }
 
     // ---- 作業記録 -----------------------------------------------------

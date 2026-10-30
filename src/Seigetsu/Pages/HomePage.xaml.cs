@@ -93,6 +93,17 @@ public partial class HomePage : UserControl, IRefreshable
         ClockText.Text = now.ToString("HH:mm");
     }
 
+    // 幅がせまいときは、右の列（天気・ツール）をタスクの下に回す
+    private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var narrow = ActualWidth < 720;
+        SideGap.Width = new GridLength(narrow ? 0 : 16);
+        SideColumn.Width = narrow ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        Grid.SetRow(SidePanel, narrow ? 1 : 0);
+        Grid.SetColumn(SidePanel, narrow ? 0 : 2);
+        SidePanel.Margin = new Thickness(0, narrow ? 16 : 0, 0, 0);
+    }
+
     private void OnMessageClick(object sender, System.Windows.Input.MouseButtonEventArgs e) => ShowNextMessage();
 
     private void ShowNextMessage() => ShowMessage(BannerMessages.Next(_message?.Kind, DateTime.Now), animate: true);

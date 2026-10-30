@@ -58,11 +58,37 @@ public partial class App : Application
         ThemeService.Apply(Database.GetSetting(SettingKeys.Appearance, "LIGHT"));
 
         Updates = new UpdateService();
+        // Windows の起動時の自動起動は、はじめはオンにする（一度だけ。自分でオフにしたら、そのまま）。
+        // 開発中にビルドしたものを登録しないよう、インストールした霽月のときだけ
+        if (Updates.CanUpdate && Database.GetSetting(SettingKeys.AutoStartDefaulted, "") == "")
+        {
+            AutoStart.SetEnabled(true);
+            Database.SetSetting(SettingKeys.AutoStartDefaulted, "1");
+        }
         DesktopStickies = new DesktopStickies();
         Weather = new WeatherService();
         Nagasaki = new NagasakiSync();
 
+        // 起動アニメーション。Windows の起動で自動に立ち上がったときや、設定でオフにしたときは出さない
+        if (!AutoStart.LaunchedAtStartup && Database.GetSetting(SettingKeys.Splash, "1") == "1")
+        {
+            var splash = new SplashWindow();
+            splash.Finished += (_, _) =>
+            {
+                ShowMainWindow();
+                splash.FadeOutAndClose();
+            };
+            splash.Show();
+            return;
+        }
+        ShowMainWindow();
+    }
+
+    private void ShowMainWindow()
+    {
         var main = new MainWindow();
+        // 起動アニメーションの窓が先にできているので、こちらをアプリの窓だとはっきり決めておく
+        MainWindow = main;
         if (AutoStart.LaunchedAtStartup)
         {
             // Windows の起動で自動に立ち上がったときは、作業のじゃまにならないよう小さくしておく
@@ -70,7 +96,7 @@ public partial class App : Application
             main.ShowActivated = false;
             main.Show();
             // × でタスクトレイに隠す設定なら、タスクトレイだけに置いておく
-            if (Database.GetSetting(SettingKeys.CloseAction, "quit") == "tray")
+            if (Database.GetSetting(SettingKeys.CloseAction, SettingKeys.CloseActionDefault) == "tray")
                 main.Hide();
         }
         else
@@ -81,7 +107,7 @@ public partial class App : Application
         DesktopStickies.Refresh();
         Weather.Start();
         Nagasaki.Start();
-        _instance.ListenForShow(Dispatcher, main.ShowFromTray);
+        _instance!.ListenForShow(Dispatcher, main.ShowFromTray);
         Updates.Start(Dispatcher);
 
         // 「Windows に合わせる」のときは、Windows 側で明るい／暗いを切り替えたらすぐについていく
@@ -111,6 +137,7 @@ public partial class App : Application
     {
         // SystemEvents は静的なイベントなので、終わるときに外しておく
         Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+        Nagasaki?.Stop();
         _instance?.Dispose();
         base.OnExit(e);
     }

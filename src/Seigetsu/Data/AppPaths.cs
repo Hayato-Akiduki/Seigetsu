@@ -1,4 +1,4 @@
-namespace Seigetsu.Data;
+﻿namespace Seigetsu.Data;
 
 /// <summary>保存先のパス。v6（Python 版）と同じ場所を使うので、データをそのまま引き継げる。</summary>
 public static class AppPaths
@@ -12,6 +12,9 @@ public static class AppPaths
 
     /// <summary>長崎大学モードのブラウザ（WebView2）のログイン状態などを置く場所。</summary>
     public static string WebViewDir => Path.Combine(DataDir, "webview");
+
+    /// <summary>LACS の授業の窓で開いた PDF などを一時的に置く場所（古いものは窓を開くときに消す）。</summary>
+    public static string LacsFilesDir => Path.Combine(DataDir, "lacs-files");
 
     private static string ResolveDataDir()
     {
@@ -33,6 +36,9 @@ public static class SettingKeys
     public const string BreakMinutes = "pomodoro_break_min";
     public const string CountdownSeconds = "countdown_seconds";     // 普通のタイマーの長さ（秒。v7 だけの設定）
     public const string CloseAction = "close_action";     // quit / tray
+    public const string CloseActionDefault = "tray";      // × ボタンは、はじめはタスクトレイに格納する
+    public const string Splash = "splash_enabled";         // 1 / 0 起動アニメーション（v7 だけの設定）
+    public const string AutoStartDefaulted = "autostart_defaulted"; // 自動起動をはじめにオンにしたか（一度だけ。オフにしたら戻さない）
     public const string Volume = "music_volume";
     public const string SidebarCollapsed = "sidebar_collapsed"; // 1 / 0（v7 だけの設定）
     public const string DueNotify = "due_notify";               // 1 / 0 締切の通知（v7 だけの設定）

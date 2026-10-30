@@ -27,6 +27,8 @@ public partial class MainWindow : FluentWindow
         new("timer", "集中タイマー", SymbolRegular.Timer24, () => new TimerPage()),
         new("notes", "メモ", SymbolRegular.Notepad24, () => new NotesPage()),
         new("calendar", "カレンダー", SymbolRegular.CalendarLtr24, () => new CalendarPage()),
+        new("university", "大学", SymbolRegular.HatGraduation24, () => new UniversityPage()),
+        new("lacs", "LACS", SymbolRegular.BookOpen24, () => new LacsPage()),
         new("stats", "分析", SymbolRegular.DataBarVertical24, () => new StatsPage()),
         new("stickies", "付箋", SymbolRegular.Note24, () => new StickiesPage()),
         new("board", "掲示板", SymbolRegular.Board24, () => new BoardPage()),
@@ -35,6 +37,9 @@ public partial class MainWindow : FluentWindow
     ];
 
     private readonly Dictionary<string, UserControl> _pages = [];
+
+    // 左メニューに今出している項目（「大学」は長崎大学モードのときだけ）
+    private List<NavItem> _visible = [];
 
     // タイマーの表示更新とフェーズ終了の確認（v6 と同じ 0.5 秒ごと）
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(500) };
@@ -56,7 +61,7 @@ public partial class MainWindow : FluentWindow
         InitializeComponent();
         var version = Assembly.GetExecutingAssembly().GetName().Version;
         VersionText.Text = $"v{version?.ToString(3)}（C# 版・開発中）";
-        NavList.ItemsSource = _items;
+        UpdateNavItems();
         NavList.SelectedIndex = 0;
         ApplySidebar(App.Database.GetSetting(SettingKeys.SidebarCollapsed, "0") == "1");
         ApplyBackground();
@@ -78,6 +83,9 @@ public partial class MainWindow : FluentWindow
     {
         if (NavList.SelectedItem is not NavItem item)
             return;
+        // LACS のページの全画面のまま、ほかの画面に移ったら（Ctrl+数字など）、全画面をやめる
+        if (_immersive && item.Key != "lacs")
+            SetImmersive(false);
         if (!_pages.TryGetValue(item.Key, out var page))
         {
             page = item.Create();
@@ -93,8 +101,66 @@ public partial class MainWindow : FluentWindow
 
     private void ToggleSidebar()
     {
+        if (_immersive)
+            SetImmersive(false);
         ApplySidebar(!_sidebarCollapsed);
-        App.Database.SetSetting(SettingKeys.SidebarCollapsed, _sidebarCollapsed ? "1" : "0");
+        // 幅がせまくて自動で閉じているときに開いたのは、その場だけ（いつもの設定は変えない）
+        if (!_narrow)
+            App.Database.SetSetting(SettingKeys.SidebarCollapsed, _sidebarCollapsed ? "1" : "0");
+    }
+
+    // ---- 窓の幅 ---------------------------------------------------------
+    // 画面の半分などのせまい幅では、左メニューを自動で閉じ、中身のまわりの余白を小さくする
+    private const double NarrowWidth = 1000;
+    private bool _narrow;
+
+    private void OnWindowSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var narrow = ActualWidth < NarrowWidth;
+        if (narrow == _narrow)
+            return;
+        _narrow = narrow;
+        // 全画面のあいだは左メニューも余白も変えない（やめるときに合わせる）
+        if (_immersive)
+            return;
+        ApplyPageMargin();
+        ApplySidebar(narrow || App.Database.GetSetting(SettingKeys.SidebarCollapsed, "0") == "1");
+    }
+
+    private void ApplyPageMargin() =>
+        PageHost.Margin = _narrow ? new Thickness(20, 44, 20, 16) : new Thickness(36, 48, 36, 28);
+
+    // ---- 全画面（LACS のページで PDF などを大きく見るとき） ----------------
+    private bool _immersive;
+    private WindowState _stateBeforeImmersive;
+
+    /// <summary>左メニューを隠し、中身の余白を小さくして、窓を画面いっぱいにしているか。</summary>
+    public bool IsImmersive => _immersive;
+
+    /// <summary>全画面にする・やめる。やめるときは、左メニュー・余白・窓の大きさを元に戻す。</summary>
+    public void SetImmersive(bool on)
+    {
+        if (on == _immersive)
+            return;
+        _immersive = on;
+        if (on)
+        {
+            _stateBeforeImmersive = WindowState;
+            SidebarPanel.Visibility = Visibility.Collapsed;
+            SidebarColumn.Width = new GridLength(0);
+            // 上は窓の × ボタンなどの分だけ空ける
+            PageHost.Margin = new Thickness(12, 40, 12, 12);
+            WindowState = WindowState.Maximized;
+        }
+        else
+        {
+            SidebarPanel.Visibility = Visibility.Visible;
+            WindowState = _stateBeforeImmersive;
+            ApplyPageMargin();
+            ApplySidebar(_narrow || App.Database.GetSetting(SettingKeys.SidebarCollapsed, "0") == "1");
+            if (_pages.TryGetValue("lacs", out var page))
+                ((LacsPage)page).ExitFullScreen();
+        }
     }
 
     /// <summary>閉じるとアイコンだけの細い幅にする（ロゴの文字・バージョン・タイマーの文字は隠し、開始ボタンは残す）。</summary>
@@ -120,7 +186,33 @@ public partial class MainWindow : FluentWindow
         UpdateMiniTimer();
     }
 
-    public void ShowPage(string key) => NavList.SelectedIndex = _items.FindIndex(i => i.Key == key);
+    public void ShowPage(string key) => NavList.SelectedIndex = _visible.FindIndex(i => i.Key == key);
+
+    /// <summary>
+    /// 左メニューの項目を、長崎大学モードのオン・オフに合わせる。開いている画面はそのまま選び直す
+    /// （「大学」を開いたままオフにしたときは、ホームに戻る）。
+    /// </summary>
+    public void UpdateNavItems()
+    {
+        var nagasaki = NagasakiUniversity.Enabled;
+        var visible = _items.Where(i => i.Key is not ("university" or "lacs") || nagasaki).ToList();
+        if (visible.Count == _visible.Count)
+            return;
+        var selected = (NavList.SelectedItem as NavItem)?.Key;
+        _visible = visible;
+        NavList.ItemsSource = _visible;
+        if (selected is not null)
+        {
+            var index = _visible.FindIndex(i => i.Key == selected);
+            NavList.SelectedIndex = index >= 0 ? index : 0;
+        }
+        if (!nagasaki)
+        {
+            _pages.Remove("university");
+            if (_pages.Remove("lacs", out var lacs))
+                ((LacsPage)lacs).Dispose();
+        }
+    }
 
     // ---- タスクトレイ ---------------------------------------------------
     /// <summary>タスクトレイに隠れている（または最小化している）窓を前に出す。</summary>
@@ -353,6 +445,30 @@ public partial class MainWindow : FluentWindow
 
     private NagasakiWindow? _nagasaki;
 
+    /// <summary>LACS のページを開く。title を渡すと、その名前の授業を開く。</summary>
+    public void ShowLacs(string? title = null)
+    {
+        ShowPage("lacs");
+        if (title is not null && _pages.TryGetValue("lacs", out var page))
+            ((LacsPage)page).ShowCourse(title);
+    }
+
+    /// <summary>LACS のページで、課題（授業の id と成績表の列の id）の画面を開く。</summary>
+    public void ShowLacsAssignment(string courseId, string columnId)
+    {
+        ShowPage("lacs");
+        if (_pages.TryGetValue("lacs", out var page))
+            ((LacsPage)page).OpenAssignment(courseId, columnId);
+    }
+
+    /// <summary>LACS のページで、決まったアドレス（授業の連絡など）を開く。</summary>
+    public void ShowLacsUrl(string url)
+    {
+        ShowPage("lacs");
+        if (_pages.TryGetValue("lacs", out var page))
+            ((LacsPage)page).OpenUrl(url);
+    }
+
     /// <summary>長崎大学のログインの窓を開く（もう開いていれば前に出すだけ）。ログインが済むと自動で取り込む。</summary>
     public void OpenNagasakiLogin()
     {
@@ -554,7 +670,7 @@ public partial class MainWindow : FluentWindow
     protected override void OnClosing(CancelEventArgs e)
     {
         // × ボタンの設定が「タスクトレイに格納する」なら、終わらずに隠すだけ（タイマーや BGM は動いたまま）
-        if (!_quitting && App.Database.GetSetting(SettingKeys.CloseAction, "quit") == "tray")
+        if (!_quitting && App.Database.GetSetting(SettingKeys.CloseAction, SettingKeys.CloseActionDefault) == "tray")
         {
             e.Cancel = true;
             Hide();
@@ -635,7 +751,7 @@ public partial class MainWindow : FluentWindow
         else if (e.Key is >= Key.D0 and <= Key.D9)
         {
             var index = e.Key == Key.D0 ? 9 : e.Key - Key.D1;
-            if (index < _items.Count)
+            if (index < _visible.Count)
                 NavList.SelectedIndex = index;
             e.Handled = true;
         }

@@ -2,7 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-             Loaded="OnLoaded">
+             Loaded="OnLoaded" SizeChanged="OnSizeChanged">
     <UserControl.Resources>
         <!-- 月表示の 1 日分。Tag が "selected" のときは選択中の色のまま、マウスを乗せても変えない -->
         <!-- キーボードで日付を選んでいるときだけ出る枠（マウスで押したときは出ない） -->
@@ -47,15 +47,17 @@
         </Style>
     </UserControl.Resources>
 
+    <!-- せまい幅（画面の半分など）では、選んだ日のタスクを月の表示の下に回す（CalendarPage.xaml.cs の OnSizeChanged） -->
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition x:Name="DayRow" Height="0" />
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="3*" />
-            <ColumnDefinition Width="16" />
-            <ColumnDefinition Width="2*" />
+            <ColumnDefinition x:Name="DayGap" Width="16" />
+            <ColumnDefinition x:Name="DayColumn" Width="2*" />
         </Grid.ColumnDefinitions>
 
         <Grid Grid.ColumnSpan="3" Margin="0,0,0,18">
@@ -111,7 +113,7 @@
         </Border>
 
         <!-- 選んだ日のタスク -->
-        <Border Grid.Row="1" Grid.Column="2" Style="{StaticResource Card}">
+        <Border x:Name="DayPanel" Grid.Row="1" Grid.Column="2" Style="{StaticResource Card}">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -148,6 +150,14 @@
                                                     <TextBlock Text="{Binding Slot.Detail}" FontSize="11" TextTrimming="CharacterEllipsis"
                                                                Foreground="{DynamicResource MutedBrush}" Visibility="{Binding DetailVisibility}"
                                                                ToolTip="{Binding Slot.Detail}" />
+                                                    <!-- 教室（シラバスから読んだもの） -->
+                                                    <StackPanel Orientation="Horizontal" Visibility="{Binding RoomVisibility}" Margin="0,2,0,0">
+                                                        <ui:SymbolIcon Symbol="Location16" FontSize="12" Margin="0,0,3,0"
+                                                                       Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
+                                                        <TextBlock Text="{Binding Slot.Room}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{DynamicResource TextBrush}" ToolTip="{Binding Slot.Room}"
+                                                                   VerticalAlignment="Center" />
+                                                    </StackPanel>
                                                 </StackPanel>
                                             </Grid>
                                         </Border>

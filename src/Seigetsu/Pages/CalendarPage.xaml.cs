@@ -13,7 +13,8 @@ public sealed record DayTaskView(
     TaskItem Task, Brush TitleBrush, TextDecorationCollection? TitleDecorations, string PriorityText, Brush PriorityBrush);
 
 /// <summary>右側の「授業」1 行分（長崎大学モード）。</summary>
-public sealed record DayClassView(ClassSlot Slot, string PeriodText, string TimeText, Visibility DetailVisibility);
+public sealed record DayClassView(
+    ClassSlot Slot, string PeriodText, string TimeText, Visibility DetailVisibility, Visibility RoomVisibility);
 
 public partial class CalendarPage : UserControl, IRefreshable
 {
@@ -66,6 +67,18 @@ public partial class CalendarPage : UserControl, IRefreshable
     private static string DateLabel(DateTime day) => day.ToString("yyyy年M月d日（ddd）", Japanese);
 
     private void OnLoaded(object sender, RoutedEventArgs e) => Refresh();
+
+    // 幅がせまいときは、選んだ日のタスクを月の表示の下に回す
+    private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var narrow = ActualWidth < 720;
+        DayGap.Width = new GridLength(narrow ? 0 : 16);
+        DayColumn.Width = narrow ? new GridLength(0) : new GridLength(2, GridUnitType.Star);
+        DayRow.Height = narrow ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        Grid.SetRow(DayPanel, narrow ? 2 : 1);
+        Grid.SetColumn(DayPanel, narrow ? 0 : 2);
+        DayPanel.Margin = new Thickness(0, narrow ? 12 : 0, 0, 0);
+    }
 
     // ---- 操作 ---------------------------------------------------------
     private void Move(int months)
@@ -198,7 +211,8 @@ public partial class CalendarPage : UserControl, IRefreshable
         ClassesPanel.Visibility = classes.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         DayClasses.ItemsSource = classes.Select(s => new DayClassView(
             s, $"{s.Period}限", NagasakiUniversity.TimeOf(s),
-            s.Detail == "" ? Visibility.Collapsed : Visibility.Visible)).ToList();
+            s.Detail == "" ? Visibility.Collapsed : Visibility.Visible,
+            s.Room == "" ? Visibility.Collapsed : Visibility.Visible)).ToList();
 
         var tasks = App.Database.TasksOn(Iso(_selected));
         var openCount = tasks.Count(t => !t.Completed);

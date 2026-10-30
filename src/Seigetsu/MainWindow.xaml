@@ -3,7 +3,8 @@
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                  Title="霽月 - Seigetsu"
-                 Width="1280" Height="820" MinWidth="1100" MinHeight="720"
+                 Width="1280" Height="820" MinWidth="640" MinHeight="560"
+                 SizeChanged="OnWindowSizeChanged"
                  WindowStartupLocation="CenterScreen"
                  ExtendsContentIntoTitleBar="True"
                  WindowBackdropType="None"
@@ -56,8 +57,8 @@
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <!-- 左メニュー -->
-        <Border Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource SidebarLineBrush}"
+        <!-- 左メニュー（LACS のページの全画面では隠す） -->
+        <Border x:Name="SidebarPanel" Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource SidebarLineBrush}"
                 BorderThickness="0,0,1,0">
             <DockPanel Margin="14,44,14,16">
                 <!-- 開閉ボタンとロゴ -->

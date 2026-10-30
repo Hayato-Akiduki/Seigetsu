@@ -15,7 +15,7 @@
         </StackPanel>
 
         <Border Grid.Row="1" Style="{StaticResource Card}">
-            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Width="520">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="520">
                 <!-- モードの切り替え -->
                 <ListBox x:Name="ModeList" Style="{StaticResource SegmentedList}" Width="420"
                          SelectionChanged="OnModeChanged" Margin="0,0,0,22">

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
@@ -56,12 +56,14 @@ public partial class SettingsPage : UserControl, IRefreshable
         AppearanceList.SelectedItem = AppearanceList.Items.Cast<ListBoxItem>().FirstOrDefault(i => (string)i.Tag == mode)
                                       ?? AppearanceList.Items[0];
 
-        var closeAction = db.GetSetting(SettingKeys.CloseAction, "quit");
+        var closeAction = db.GetSetting(SettingKeys.CloseAction, SettingKeys.CloseActionDefault);
         CloseActionList.SelectedItem = CloseActionList.Items.Cast<ListBoxItem>().FirstOrDefault(i => (string)i.Tag == closeAction)
-                                       ?? CloseActionList.Items[0];
+                                       ?? CloseActionList.Items[1];
 
         // 自動起動はデータベースではなく Windows 側に入っているので、そちらを見る
         AutoStartList.SelectedIndex = AutoStart.IsEnabled ? 0 : 1;
+
+        SplashList.SelectedIndex = db.GetSetting(SettingKeys.Splash, "1") == "1" ? 0 : 1;
 
         FillMinutes(WorkBox, WorkChoices, db.GetIntSetting(SettingKeys.WorkMinutes, 25));
         FillMinutes(BreakBox, BreakChoices, db.GetIntSetting(SettingKeys.BreakMinutes, 5));
@@ -142,6 +144,13 @@ public partial class SettingsPage : UserControl, IRefreshable
         App.Database.SetSetting(SettingKeys.CloseAction, (string)item.Tag);
     }
 
+    private void OnSplashChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || !IsLoaded || SplashList.SelectedItem is not ListBoxItem item)
+            return;
+        App.Database.SetSetting(SettingKeys.Splash, (string)item.Tag);
+    }
+
     private void OnAutoStartChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_loading || !IsLoaded || AutoStartList.SelectedItem is not ListBoxItem item)
@@ -184,6 +193,7 @@ public partial class SettingsPage : UserControl, IRefreshable
         if (_loading || !IsLoaded || NagasakiModeList.SelectedItem is not ListBoxItem item)
             return;
         App.Database.SetSetting(SettingKeys.NagasakiMode, (string)item.Tag);
+        Main.UpdateNavItems(); // 左メニューの「大学」を出す・しまう
         Refresh();
         // オンにしたらすぐ更新する（初めてでログインがまだなら、ログインの窓が開く）
         if ((string)item.Tag == "1")
