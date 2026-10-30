@@ -1,0 +1,56 @@
+<Window x:Class="Seigetsu.QuickSplashWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="霽月 - Seigetsu"
+        Width="240" Height="240"
+        WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent"
+        WindowStartupLocation="CenterScreen" ShowInTaskbar="False" Topmost="True"
+        Loaded="OnLoaded" MouseLeftButtonDown="OnSkip" KeyDown="OnSkip">
+    <!-- 2 回目からの起動アニメーション。満月が右上から欠けて、アイコンと同じ三日月になったら終わる -->
+    <Grid x:Name="Root" Margin="20" Opacity="0" RenderTransformOrigin="0.5,0.5">
+        <Grid.RenderTransform>
+            <ScaleTransform ScaleX="0.94" ScaleY="0.94" />
+        </Grid.RenderTransform>
+
+        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}"
+                BorderThickness="1" CornerRadius="28">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="22" ShadowDepth="3" Opacity="0.25" Color="#0A1A3A" />
+            </Border.Effect>
+        </Border>
+
+        <!-- 月のまわりの光 -->
+        <Ellipse x:Name="Glow" Width="170" Height="170" Opacity="0" RenderTransformOrigin="0.5,0.5">
+            <Ellipse.Fill>
+                <RadialGradientBrush>
+                    <GradientStop x:Name="GlowInner" Offset="0" Color="#552563EB" />
+                    <GradientStop x:Name="GlowOuter" Offset="1" Color="#002563EB" />
+                </RadialGradientBrush>
+            </Ellipse.Fill>
+            <Ellipse.RenderTransform>
+                <ScaleTransform ScaleX="0.7" ScaleY="0.7" />
+            </Ellipse.RenderTransform>
+        </Ellipse>
+
+        <!-- 欠けたところに、うっすら残る月の影 -->
+        <Ellipse x:Name="Shade" Width="100" Height="100" Fill="{DynamicResource MoonBrush}" Opacity="0" />
+
+        <!-- 月。くり抜く円（Cut）を右上の外から動かして欠けさせる -->
+        <Path x:Name="Moon" Width="120" Height="120" Stretch="None" Fill="{DynamicResource MoonBrush}" Opacity="0"
+              HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+            <Path.Data>
+                <CombinedGeometry GeometryCombineMode="Exclude">
+                    <CombinedGeometry.Geometry1>
+                        <EllipseGeometry Center="60,60" RadiusX="50" RadiusY="50" />
+                    </CombinedGeometry.Geometry1>
+                    <CombinedGeometry.Geometry2>
+                        <EllipseGeometry x:Name="Cut" Center="157.5,-22.5" RadiusX="41.5" RadiusY="41.5" />
+                    </CombinedGeometry.Geometry2>
+                </CombinedGeometry>
+            </Path.Data>
+            <Path.RenderTransform>
+                <ScaleTransform ScaleX="0.9" ScaleY="0.9" />
+            </Path.RenderTransform>
+        </Path>
+    </Grid>
+</Window>

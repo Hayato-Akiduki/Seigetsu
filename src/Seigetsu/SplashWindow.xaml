@@ -1,120 +1,31 @@
 <Window x:Class="Seigetsu.SplashWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         Title="霽月 - Seigetsu"
-        Width="420" Height="300"
         WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent"
-        WindowStartupLocation="CenterScreen" ShowInTaskbar="False" Topmost="True"
+        WindowStartupLocation="Manual" ShowInTaskbar="False" Topmost="True"
         FontFamily="{StaticResource AppFont}"
         Loaded="OnLoaded" MouseLeftButtonDown="OnSkip" KeyDown="OnSkip">
-    <!-- 起動アニメーション。雨雲が左右に晴れて月が現れ、名前が浮かび上がる（「霽月」は雨上がりの晴れた空の月） -->
-    <Grid x:Name="Root" Opacity="0" RenderTransformOrigin="0.5,0.5" Margin="20">
-        <Grid.RenderTransform>
-            <ScaleTransform x:Name="RootScale" ScaleX="0.96" ScaleY="0.96" />
-        </Grid.RenderTransform>
+    <!--
+      初回の起動アニメーション（画面全体）。夜空が広がり、いろいろな図形が集まって満月になり、
+      右上から欠けて三日月になって、名前が浮かび上がる。外観の設定にかかわらず、夜空の黒と藍色で出す。
+      図形や光は数が多いので、コードの側で作って動かす。
+    -->
+    <Grid x:Name="Root">
+        <Rectangle x:Name="Sky" Opacity="0">
+            <Rectangle.Fill>
+                <RadialGradientBrush GradientOrigin="0.5,0.42" Center="0.5,0.42" RadiusX="0.8" RadiusY="0.9">
+                    <GradientStop Offset="0" Color="#171B47" />
+                    <GradientStop Offset="0.45" Color="#0A0B1E" />
+                    <GradientStop Offset="1" Color="#000000" />
+                </RadialGradientBrush>
+            </Rectangle.Fill>
+        </Rectangle>
 
-        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource LineBrush}"
-                BorderThickness="1" CornerRadius="20">
-            <Border.Effect>
-                <DropShadowEffect BlurRadius="24" ShadowDepth="4" Opacity="0.22" Color="#0A1A3A" />
-            </Border.Effect>
-        </Border>
+        <!-- 星・光・図形・月を置く舞台 -->
+        <Canvas x:Name="Stage" />
 
-        <!-- 角を丸めた中だけに雲を描く -->
-        <Border>
-            <Border.Clip>
-                <RectangleGeometry Rect="0,0,380,260" RadiusX="20" RadiusY="20" />
-            </Border.Clip>
-
-            <Grid>
-                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,0,0,6">
-                    <!-- 月と、そのまわりの光 -->
-                    <Grid Width="120" Height="110" HorizontalAlignment="Center">
-                        <Ellipse x:Name="Glow" Width="120" Height="120" Opacity="0" RenderTransformOrigin="0.5,0.5"
-                                 HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Ellipse.Fill>
-                                <RadialGradientBrush>
-                                    <GradientStop x:Name="GlowInner" Offset="0" Color="#662563EB" />
-                                    <GradientStop x:Name="GlowOuter" Offset="1" Color="#002563EB" />
-                                </RadialGradientBrush>
-                            </Ellipse.Fill>
-                            <Ellipse.RenderTransform>
-                                <ScaleTransform x:Name="GlowScale" ScaleX="0.6" ScaleY="0.6" />
-                            </Ellipse.RenderTransform>
-                        </Ellipse>
-                        <!-- 三日月。大きな円から、右上にずらした円をくり抜いて作る -->
-                        <Path x:Name="Moon" Fill="{DynamicResource MoonBrush}" Opacity="0"
-                              Width="52" Height="52" Stretch="None"
-                              HorizontalAlignment="Center" VerticalAlignment="Center"
-                              RenderTransformOrigin="0.5,0.5">
-                            <Path.Data>
-                                <CombinedGeometry GeometryCombineMode="Exclude">
-                                    <CombinedGeometry.Geometry1>
-                                        <EllipseGeometry Center="26,26" RadiusX="24" RadiusY="24" />
-                                    </CombinedGeometry.Geometry1>
-                                    <CombinedGeometry.Geometry2>
-                                        <EllipseGeometry Center="38,16" RadiusX="20" RadiusY="20" />
-                                    </CombinedGeometry.Geometry2>
-                                </CombinedGeometry>
-                            </Path.Data>
-                            <Path.RenderTransform>
-                                <TransformGroup>
-                                    <ScaleTransform x:Name="MoonScale" ScaleX="0.85" ScaleY="0.85" />
-                                    <RotateTransform x:Name="MoonRotate" Angle="-18" />
-                                </TransformGroup>
-                            </Path.RenderTransform>
-                        </Path>
-
-                        <!-- 月を隠している雨雲。左右に分かれて消えていく -->
-                        <Canvas x:Name="CloudLeft" Width="120" Height="110" IsHitTestVisible="False">
-                            <Canvas.RenderTransform>
-                                <TranslateTransform x:Name="CloudLeftMove" />
-                            </Canvas.RenderTransform>
-                            <Canvas.Effect>
-                                <BlurEffect Radius="6" />
-                            </Canvas.Effect>
-                            <Ellipse Canvas.Left="-6" Canvas.Top="42" Width="78" Height="44" Fill="{DynamicResource SubtleBrush}" />
-                            <Ellipse Canvas.Left="14" Canvas.Top="24" Width="56" Height="50" Fill="{DynamicResource SubtleBrush}" />
-                            <Ellipse Canvas.Left="30" Canvas.Top="50" Width="44" Height="34" Fill="{DynamicResource LineBrush}" />
-                        </Canvas>
-                        <Canvas x:Name="CloudRight" Width="120" Height="110" IsHitTestVisible="False">
-                            <Canvas.RenderTransform>
-                                <TranslateTransform x:Name="CloudRightMove" />
-                            </Canvas.RenderTransform>
-                            <Canvas.Effect>
-                                <BlurEffect Radius="6" />
-                            </Canvas.Effect>
-                            <Ellipse Canvas.Left="48" Canvas.Top="36" Width="80" Height="46" Fill="{DynamicResource SubtleBrush}" />
-                            <Ellipse Canvas.Left="52" Canvas.Top="18" Width="52" Height="46" Fill="{DynamicResource SubtleBrush}" />
-                            <Ellipse Canvas.Left="44" Canvas.Top="54" Width="50" Height="32" Fill="{DynamicResource LineBrush}" />
-                        </Canvas>
-                    </Grid>
-
-                    <TextBlock x:Name="TitleText" Text="霽 月" FontSize="30" FontWeight="Bold"
-                               Foreground="{DynamicResource MoonBrush}" HorizontalAlignment="Center"
-                               Margin="0,4,0,0" Opacity="0">
-                        <TextBlock.RenderTransform>
-                            <TranslateTransform x:Name="TitleMove" Y="10" />
-                        </TextBlock.RenderTransform>
-                    </TextBlock>
-                    <TextBlock x:Name="SubText" Text="S E I G E T S U" FontSize="11" FontWeight="Bold"
-                               Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Center"
-                               Margin="0,2,0,0" Opacity="0">
-                        <TextBlock.RenderTransform>
-                            <TranslateTransform x:Name="SubMove" Y="8" />
-                        </TextBlock.RenderTransform>
-                    </TextBlock>
-                    <!-- 下にのびる細い線 -->
-                    <Border x:Name="Line" Height="2" Width="120" CornerRadius="1" Margin="0,14,0,0"
-                            HorizontalAlignment="Center" Background="{DynamicResource MoonBrush}" Opacity="0.7"
-                            RenderTransformOrigin="0.5,0.5">
-                        <Border.RenderTransform>
-                            <ScaleTransform x:Name="LineScale" ScaleX="0" />
-                        </Border.RenderTransform>
-                    </Border>
-                </StackPanel>
-            </Grid>
-        </Border>
+        <TextBlock x:Name="SkipHint" Text="クリックかキーで飛ばせます" FontSize="13" Foreground="#7D8391"
+                   HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,36" Opacity="0" />
     </Grid>
 </Window>

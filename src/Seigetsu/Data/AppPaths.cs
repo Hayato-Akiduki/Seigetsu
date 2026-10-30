@@ -38,6 +38,7 @@ public static class SettingKeys
     public const string CloseAction = "close_action";     // quit / tray
     public const string CloseActionDefault = "tray";      // × ボタンは、はじめはタスクトレイに格納する
     public const string Splash = "splash_enabled";         // 1 / 0 起動アニメーション（v7 だけの設定）
+    public const string IntroShown = "splash_intro_shown"; // 初回の大きな起動アニメーションを出したか
     public const string AutoStartDefaulted = "autostart_defaulted"; // 自動起動をはじめにオンにしたか（一度だけ。オフにしたら戻さない）
     public const string Volume = "music_volume";
     public const string SidebarCollapsed = "sidebar_collapsed"; // 1 / 0（v7 だけの設定）

@@ -145,7 +145,7 @@
                     <StackPanel>
                         <TextBlock Text="起動アニメーション" Style="{StaticResource CardTitle}" Margin="0,0,0,2" />
                         <TextBlock Style="{StaticResource Muted}" FontSize="12" Margin="0,0,0,12" TextWrapping="Wrap"
-                                   Text="霽月を開いたときに、雲が晴れて月が出るアニメーションを出します（2 秒ほど。クリックで飛ばせます）。Windows の起動で自動に立ち上がったときは出しません。" />
+                                   Text="霽月を開いたときに、月が欠けて三日月になるアニメーションを出します（1.5 秒ほど。はじめて開いたときだけは、画面いっぱいの演出です）。クリックかキーで飛ばせます。Windows の起動で自動に立ち上がったときは出しません。" />
                         <ListBox x:Name="SplashList" Style="{StaticResource SegmentedList}" HorizontalAlignment="Left"
                                  SelectionChanged="OnSplashChanged">
                             <ListBoxItem Content="出す" Tag="1" />
