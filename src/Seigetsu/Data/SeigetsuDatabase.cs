@@ -417,6 +417,20 @@ public sealed class SeigetsuDatabase
         return ReadTasks(command);
     }
 
+    /// <summary>LACS の画面用: その授業から取り込んだ課題（未完了が先、締切の近い順）。</summary>
+    public IReadOnlyList<TaskItem> LacsTasksOfCourse(string courseId)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT {TaskColumns} FROM tasks
+            WHERE id IN (SELECT task_id FROM nu_lacs_tasks WHERE substr(item_id, 1, length($prefix)) = $prefix)
+            ORDER BY completed, CASE WHEN due_date = '' THEN 1 ELSE 0 END, due_date, id
+            """;
+        command.Parameters.AddWithValue("$prefix", courseId + "/");
+        return ReadTasks(command);
+    }
+
     /// <summary>LACS から取り込んだタスクの、もとの課題（「授業の id/成績表の列の id」）。LACS の課題でなければ null。</summary>
     public string? LacsItemOfTask(long taskId) =>
         Scalar("SELECT item_id FROM nu_lacs_tasks WHERE task_id = $task", ("$task", taskId)) as string;

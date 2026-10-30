@@ -7,35 +7,38 @@ using Wpf.Ui.Controls;
 
 namespace Seigetsu.Services;
 
-/// <summary>明るい／暗い外観の切り替え。明るい外観は白と青、暗い外観は黒と青。色は (明るい, 暗い) の組。</summary>
+/// <summary>
+/// 明るい／暗い外観の切り替え。色は (明るい, 暗い) の組。
+/// 見た目は「線を減らし、うすい影と広い余白で見せる」落ち着いた作り。色は墨色を中心に、藍色を少しだけ使う。
+/// </summary>
 public static class ThemeService
 {
     private static readonly Dictionary<string, (string Light, string Dark)> Palette = new()
     {
-        ["BgBrush"] = ("#F3F6FC", "#0A0A0C"),
-        ["CardBrush"] = ("#FFFFFF", "#141418"),
-        ["LineBrush"] = ("#DDE5F2", "#27272E"),
-        ["TextBrush"] = ("#14213D", "#EDEFF3"),
-        ["MutedBrush"] = ("#5B6B86", "#A0A6B2"),
-        ["AccentBrush"] = ("#2563EB", "#5B9BFF"),
-        ["SubtleBrush"] = ("#EAF1FD", "#1C1C22"),
-        ["DangerBrush"] = ("#C94A4A", "#F08585"),
+        ["BgBrush"] = ("#F5F6F8", "#0F1013"),
+        ["CardBrush"] = ("#FFFFFF", "#18191D"),
+        ["LineBrush"] = ("#ECEEF1", "#24262C"),
+        ["TextBrush"] = ("#17191F", "#ECEDF0"),
+        ["MutedBrush"] = ("#6A7080", "#9AA0AC"),
+        ["AccentBrush"] = ("#3451D1", "#8EA2FF"),
+        ["SubtleBrush"] = ("#EEF0F4", "#202228"),
+        ["DangerBrush"] = ("#D14343", "#F08585"),
         ["WarningBrush"] = ("#B7791F", "#F0B95A"),
         ["SuccessBrush"] = ("#2E8B62", "#5CCB98"),
-        ["SegSelectedBrush"] = ("#FFFFFF", "#1E2A44"),
-        ["OnAccentBrush"] = ("#FFFFFF", "#0A0A0C"), // 青く塗った上の文字
+        ["SegSelectedBrush"] = ("#FFFFFF", "#2B2E36"),
+        ["OnAccentBrush"] = ("#FFFFFF", "#0F1013"), // 青く塗った上の文字
         // グラフの棒。カードの色との差が 3:1 以上になるようにしている
-        ["ChartBarBrush"] = ("#2563EB", "#4F8DF5"),
-        // 左メニュー。明るい外観では白、暗い外観では黒。選んでいる項目は青
-        ["SidebarBrush"] = ("#FFFFFF", "#000000"),
-        ["SidebarLineBrush"] = ("#DDE5F2", "#1F1F25"), // 右端の線
-        ["SidebarTextBrush"] = ("#33415C", "#D5D9E2"),
-        ["SidebarMutedBrush"] = ("#5B6B86", "#8E95A3"),
-        ["SidebarStrongBrush"] = ("#1D4ED8", "#FFFFFF"), // 選んでいる項目・タイマーの数字
-        ["SidebarActiveBrush"] = ("#E6EEFD", "#16233F"),
-        ["SidebarHoverBrush"] = ("#F1F5FC", "#15151A"),
+        ["ChartBarBrush"] = ("#3451D1", "#7F95FA"),
+        // 左メニュー。窓の背景と同じ色にして、境目の線は見せない。選んでいる項目はカードと同じ色で浮かせる
+        ["SidebarBrush"] = ("#F5F6F8", "#0F1013"),
+        ["SidebarLineBrush"] = ("#F5F6F8", "#0F1013"), // 右端の線
+        ["SidebarTextBrush"] = ("#3C4150", "#C9CDD6"),
+        ["SidebarMutedBrush"] = ("#8A90A0", "#7D8391"),
+        ["SidebarStrongBrush"] = ("#17191F", "#FFFFFF"), // 選んでいる項目・タイマーの数字
+        ["SidebarActiveBrush"] = ("#FFFFFF", "#1C1E23"),
+        ["SidebarHoverBrush"] = ("#ECEEF2", "#16171B"),
         // 月のロゴと、選んでいる項目の印
-        ["MoonBrush"] = ("#2563EB", "#5B9BFF"),
+        ["MoonBrush"] = ("#3451D1", "#8EA2FF"),
     };
 
     public static bool IsDark { get; private set; }
@@ -52,8 +55,8 @@ public static class ThemeService
 
         var theme = IsDark ? ApplicationTheme.Dark : ApplicationTheme.Light;
         ApplicationThemeManager.Apply(theme, WindowBackdropType.None, updateAccent: false);
-        // 青いボタンなどの色を、Windows の色ではなく霽月の青にする
-        ApplicationAccentColorManager.Apply((Color)ColorConverter.ConvertFromString("#2563EB"), theme, false, false);
+        // 青いボタンなどの色を、Windows の色ではなく霽月の藍色にする
+        ApplicationAccentColorManager.Apply((Color)ColorConverter.ConvertFromString(IsDark ? "#6F86F5" : "#3451D1"), theme, false, false);
 
         var resources = Application.Current.Resources;
         foreach (var (key, (light, dark)) in Palette)

@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using Microsoft.Web.WebView2.Core;
 using Seigetsu.Data;
 using Seigetsu.Services;
@@ -11,11 +12,41 @@ using Wpf.Ui.Controls;
 
 namespace Seigetsu.Pages;
 
+/// <summary>左の一覧の授業 1 つ。Sub は授業の番号と学期。</summary>
+public sealed record CourseRow(LacsCourse Course, bool InTimetable)
+{
+    public string Name => Course.Name;
+
+    public string Sub => string.Join("・", new[] { InTimetable ? "時間割にあり" : "", Course.Term, Course.Code }
+        .Where(s => s != ""));
+}
+
+/// <summary>右の「課題」の 1 行。</summary>
+public sealed record AssignmentRow(
+    TaskItem Task, string Title, string DueText, Brush DueBrush, Brush TitleBrush, TextDecorationCollection? Decorations,
+    SymbolRegular Icon, Brush IconBrush);
+
+/// <summary>右の「連絡事項」の 1 行。Open のときは本文を出す。</summary>
+public sealed record AnnouncementRow(AnnouncementItem Item, bool Open)
+{
+    public string Title => Item.Title;
+
+    public string DateText => Item.Created.ToString("M/d");
+
+    public string Body => Item.Body == "" ? "（本文はありません）" : Item.Body;
+
+    public Visibility BodyVisibility => Open ? Visibility.Visible : Visibility.Collapsed;
+
+    // まだ霽月で読んでいない連絡は太字
+    public FontWeight TitleWeight => Item.Seen ? FontWeights.Normal : FontWeights.Bold;
+}
+
 /// <summary>
 /// LACS の授業を霽月の中で見るページ（長崎大学モードのときだけ左メニューに出る）。
-/// 左に登録している授業、右にその授業のページを出す。
+/// 左に登録している授業（ふだんは今の学期の分だけ。名前で探せる）、まん中にその授業のページ、
+/// 右にその授業の課題・連絡事項・資料のまとめ保存を出す。
 /// ログインは長崎大学モードと同じもの（同じ WebView2 の保存場所）を使うので、もう一度ログインしなくてよい。
-/// 配られた PDF は、ダウンロードになるものも含めて、このページの中（Edge の PDF 表示）で開く。
+/// 配られた PDF は、ダウンロードになるものも含めて、このページの中（Edge の PDF 表示）で開き、好きな場所に保存もできる。
 /// 画面は一度作ったら残すので、ほかの画面に移って戻っても、見ていたページのまま。
 /// </summary>
 public partial class LacsPage : UserControl, IDisposable
@@ -29,8 +60,30 @@ public partial class LacsPage : UserControl, IDisposable
     // このページの中で開くファイルの種類（ほかはふつうのダウンロードにする）
     private static readonly string[] ViewableTypes = ["application/pdf"];
 
+    // 授業の一覧と「課題と連絡」の幅。境目をドラッグして変えられ、変えた幅は覚えておく
+    private const double DefaultListWidth = 260;
+    private const double DefaultInfoWidth = 300;
+    private const double MinPanelWidth = 180;
+    private const double MaxPanelWidth = 520;
+    // これより細くドラッグしたら、その欄を隠す（上のボタンでまた出せる）
+    private const double HideBelow = 120;
+
+    private static double SavedWidth(string key, double fallback) =>
+        double.TryParse(App.Database.GetSetting(key, ""), System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var width)
+            ? Math.Clamp(width, MinPanelWidth, MaxPanelWidth) : fallback;
+
+    private static double ListWidth => SavedWidth(SettingKeys.LacsListWidth, DefaultListWidth);
+
+    private static double InfoWidth => SavedWidth(SettingKeys.LacsInfoWidth, DefaultInfoWidth);
+
     private CoreWebView2? _core;
     private bool _started;
+    private IReadOnlyList<CourseRow> _allCourses = [];
+    private CourseRow? _shownCourse;
+    // 本文を開いている連絡事項
+    private readonly HashSet<string> _openAnnouncements = [];
+    private bool _savingMaterials;
 
     // 開いたときに選ぶ授業（今日の授業から開いたとき）。名前で LACS の授業を探す
     private string? _courseHint;
@@ -38,18 +91,22 @@ public partial class LacsPage : UserControl, IDisposable
     public LacsPage()
     {
         InitializeComponent();
+        CurrentOnlyBox.IsChecked = App.Database.GetSetting(SettingKeys.LacsCurrentOnly, "1") == "1";
+        ShowList(true);
+        ShowInfo(App.Database.GetSetting(SettingKeys.LacsInfoPanel, "1") == "1");
     }
 
     private MainWindow Main => (MainWindow)Window.GetWindow(this);
 
-    /// <summary>名前が似ている授業を選んで開く。見つからなければ一覧のまま。</summary>
+    private IEnumerable<LacsCourse> Courses => _allCourses.Select(c => c.Course);
+
     // 開いたときに出すアドレス（大学ページの連絡から開いたとき）。準備がまだなら、授業の一覧を読んだあとに開く
     private string? _pendingUrl;
 
     /// <summary>決まったアドレスを開く。</summary>
     public void OpenUrl(string url)
     {
-        if (_core is not null && CourseList.ItemsSource is not null)
+        if (_core is not null && _allCourses.Count > 0)
             _core.Navigate(url);
         else
             _pendingUrl = url;
@@ -61,11 +118,13 @@ public partial class LacsPage : UserControl, IDisposable
     /// <summary>課題（授業の id と成績表の列の id）の画面を開く。課題の画面が分からなければ、授業のページを開く。</summary>
     public async void OpenAssignment(string courseId, string columnId)
     {
-        if (_core is null || CourseList.ItemsSource is null)
+        if (_core is null || _allCourses.Count == 0)
         {
             _pendingAssignment = (courseId, columnId);
             return;
         }
+        if (_allCourses.FirstOrDefault(c => c.Course.Id == courseId) is { } row)
+            ShowCourseInfo(row);
         StatusText.Text = "課題の画面を探しています…";
         string? url = null;
         try
@@ -90,32 +149,61 @@ public partial class LacsPage : UserControl, IDisposable
         return new LacsClient(string.Join("; ", cookies.Select(c => $"{c.Name}={c.Value}")), _core.Settings.UserAgent);
     }
 
+    /// <summary>名前が似ている授業を選んで開く。見つからなければ一覧のまま。</summary>
     public void ShowCourse(string title)
     {
         _courseHint = title;
-        if (CourseList.ItemsSource is IEnumerable<LacsCourse> courses)
-            SelectHintedCourse(courses);
+        if (_allCourses.Count > 0)
+            SelectHintedCourse();
     }
 
-    private void SelectHintedCourse(IEnumerable<LacsCourse> courses)
+    private void SelectHintedCourse()
     {
         if (_courseHint is null)
             return;
-        var match = NagasakiUniversity.FindCourse(courses, _courseHint);
+        var match = NagasakiUniversity.FindCourse(Courses, _courseHint);
         _courseHint = null;
         if (match is null)
+        {
             StatusText.Text = "LACS で同じ名前の授業が見つかりませんでした。左の一覧から選んでください。";
-        else if (CourseList.SelectedItem is LacsCourse selected && selected == match)
-            _core?.Navigate(match.Url); // もう選んである授業でも、授業のページに戻す
+            return;
+        }
+        SelectCourse(match.Id, navigate: true);
+    }
+
+    /// <summary>授業を一覧で選んで、授業のページを開く。今の絞り込みで見えなければ、絞り込みを外す。</summary>
+    private void SelectCourse(string courseId, bool navigate)
+    {
+        if (_allCourses.FirstOrDefault(c => c.Course.Id == courseId) is not { } row)
+            return;
+        if (CourseList.Items.Cast<CourseRow>().All(c => c.Course.Id != courseId))
+        {
+            SearchBox.Text = "";
+            CurrentOnlyBox.IsChecked = false;
+            ApplyFilter();
+        }
+        var item = CourseList.Items.Cast<CourseRow>().First(c => c.Course.Id == courseId);
+        if (CourseList.SelectedItem is CourseRow current && current.Course.Id == item.Course.Id)
+        {
+            if (navigate)
+                _core?.Navigate(row.Course.Url); // もう選んである授業でも、授業のページに戻す
+        }
         else
-            CourseList.SelectedItem = match;
+        {
+            CourseList.SelectedItem = item; // OnCourseSelected で開く
+        }
+        CourseList.ScrollIntoView(item);
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // 画面を移って戻ってくるたびに呼ばれるので、準備は最初の 1 回だけ
+        // 画面を移って戻ってくるたびに呼ばれる。準備は最初の 1 回だけ。右の課題と連絡は、戻るたびに新しくする
         if (_started)
+        {
+            if (_shownCourse is { } shown)
+                ShowCourseInfo(shown);
             return;
+        }
         _started = true;
         CleanOldFiles();
         StatusText.Text = "準備しています…";
@@ -136,8 +224,11 @@ public partial class LacsPage : UserControl, IDisposable
         _core.SourceChanged += (_, _) =>
         {
             UpdateTitle();
-            UpdateBigPdfButton();
+            UpdateFileButtons();
         };
+        // 読み込んでいる間は、上に細い帯を動かす
+        _core.NavigationStarting += (_, _) => LoadingBar.Visibility = Visibility.Visible;
+        _core.NavigationCompleted += (_, _) => LoadingBar.Visibility = Visibility.Hidden;
         // ページの中の「全画面」（LACS の PDF プレビューのボタンなど）を押したら、霽月も全画面にする
         _core.ContainsFullScreenElementChanged += (_, _) =>
         {
@@ -167,16 +258,19 @@ public partial class LacsPage : UserControl, IDisposable
             return;
         ListMessage.Text = "授業を読み込んでいます…";
         CourseList.ItemsSource = null;
+        _allCourses = [];
         try
         {
-            var url = $"https://{NagasakiUniversity.LacsHost}";
-            var cookies = await _core.CookieManager.GetCookiesAsync(url);
-            using var client = new LacsClient(string.Join("; ", cookies.Select(c => $"{c.Name}={c.Value}")),
-                _core.Settings.UserAgent);
+            using var client = await BrowserClientAsync();
             var courses = await client.ReadCoursesAsync();
-            ListMessage.Text = courses.Count == 0 ? "登録している授業が見つかりませんでした。" : "";
-            CourseList.ItemsSource = courses;
+            // 時間割（NU-Web）にある授業は、学期の情報が分からなくても「今の学期」に入れる
+            var inTimetable = App.Database.GetTimetable()
+                .Select(s => NagasakiUniversity.FindCourse(courses, s.Title)?.Id)
+                .Where(id => id is not null).ToHashSet();
+            _allCourses = courses.Select(c => new CourseRow(c, inTimetable.Contains(c.Id))).ToList();
+            ApplyFilter();
             StatusText.Text = courses.Count == 0 ? "" : "左の一覧から授業を選んでください。";
+
             if (_pendingAssignment is { } assignment)
             {
                 _pendingAssignment = null;
@@ -187,16 +281,21 @@ public partial class LacsPage : UserControl, IDisposable
                 _pendingUrl = null;
                 _core.Navigate(pending);
             }
-            else if (_courseHint is null)
-                _core.Navigate(NagasakiUniversity.LacsUrl);
+            else if (_courseHint is not null)
+                SelectHintedCourse();
+            else if (App.Database.GetSetting(SettingKeys.LacsLastCourse, "") is { Length: > 0 } last
+                     && _allCourses.Any(c => c.Course.Id == last))
+                SelectCourse(last, navigate: true); // 前に見ていた授業から始める
             else
-                SelectHintedCourse(courses);
+                _core.Navigate(NagasakiUniversity.LacsUrl);
         }
         catch (LacsLoginException)
         {
-            // ログインが切れている。右側で LACS のログインをしてもらい、済んだら一覧を読み直す
-            ListMessage.Text = "LACS のログインが切れています。右側で長大ID でログインすると、授業の一覧が出ます。";
+            // ログインが切れている。まん中で LACS のログインをしてもらい、済んだら一覧を読み直す
+            ListMessage.Text = "LACS のログインが切れています。まん中で長大ID でログインすると、授業の一覧が出ます。";
             StatusText.Text = "";
+            _signInLinkFollowed = false;
+            _core.NavigationCompleted -= OnSignInNavigationCompleted;
             _core.NavigationCompleted += OnSignInNavigationCompleted;
             _core.Navigate(NagasakiUniversity.LacsHome);
         }
@@ -206,6 +305,44 @@ public partial class LacsPage : UserControl, IDisposable
             ListMessage.Text = "授業の一覧を読み込めませんでした（" + error.Message + "）。上の ⟳ で読み込み直せます。";
             StatusText.Text = "";
         }
+    }
+
+    /// <summary>「今の学期だけ」と検索の文字で、一覧を絞る。時間割にある授業を上に出す。</summary>
+    private void ApplyFilter()
+    {
+        var query = SearchBox.Text.Trim();
+        var currentOnly = CurrentOnlyBox.IsChecked == true;
+        var shown = _allCourses
+            .Where(c => !currentOnly || c.Course.Current || c.InTimetable)
+            .Where(c => query == "" || c.Course.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)
+                                     || c.Course.Code.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(c => c.InTimetable)
+            .ThenBy(c => c.Course.Name, StringComparer.CurrentCulture)
+            .ToList();
+        var selected = CourseList.SelectedItem as CourseRow;
+        CourseList.SelectionChanged -= OnCourseSelected;
+        CourseList.ItemsSource = shown;
+        if (selected is not null && shown.FirstOrDefault(c => c.Course.Id == selected.Course.Id) is { } again)
+            CourseList.SelectedItem = again;
+        CourseList.SelectionChanged += OnCourseSelected;
+
+        CountText.Text = _allCourses.Count == 0 ? "" : $"{shown.Count} / {_allCourses.Count} 件";
+        ListMessage.Text = _allCourses.Count == 0 ? "登録している授業が見つかりませんでした。"
+            : shown.Count > 0 ? ""
+            : query != "" ? "当てはまる授業がありません。"
+            : "今の学期の授業が見つかりませんでした。「今の学期の授業だけ」を外すと、すべて出ます。";
+    }
+
+    private void OnSearchChanged(object sender, TextChangedEventArgs e)
+    {
+        if (IsLoaded)
+            ApplyFilter();
+    }
+
+    private void OnCurrentOnlyClick(object sender, RoutedEventArgs e)
+    {
+        App.Database.SetSetting(SettingKeys.LacsCurrentOnly, CurrentOnlyBox.IsChecked == true ? "1" : "0");
+        ApplyFilter();
     }
 
     // ログインの途中: LACS に戻ってきて、自分の情報が読めるようになったら一覧を読み直す
@@ -233,8 +370,204 @@ public partial class LacsPage : UserControl, IDisposable
 
     private void OnCourseSelected(object sender, SelectionChangedEventArgs e)
     {
-        if (CourseList.SelectedItem is LacsCourse course && _core is not null)
-            _core.Navigate(course.Url);
+        if (CourseList.SelectedItem is not CourseRow row || _core is null)
+            return;
+        _core.Navigate(row.Course.Url);
+        App.Database.SetSetting(SettingKeys.LacsLastCourse, row.Course.Id);
+        ShowCourseInfo(row);
+    }
+
+    // ---- 右の「課題と連絡」 ---------------------------------------------
+    /// <summary>選んだ授業の課題（タスクに取り込んだもの）と連絡事項（自動更新で読んだもの）を出す。</summary>
+    private void ShowCourseInfo(CourseRow row)
+    {
+        if (_shownCourse?.Course.Id != row.Course.Id)
+        {
+            _openAnnouncements.Clear();
+            MaterialsText.Text = "";
+            OpenMaterialsButton.Visibility = Directory.Exists(MaterialsFolder(row.Course)) ? Visibility.Visible : Visibility.Collapsed;
+        }
+        _shownCourse = row;
+        InfoTitle.Text = row.Course.Name;
+        InfoSub.Text = row.Sub;
+        InfoBody.Visibility = Visibility.Visible;
+
+        var muted = ThemeService.Brush("MutedBrush");
+        var tasks = App.Database.LacsTasksOfCourse(row.Course.Id);
+        AssignmentList.ItemsSource = tasks.Select(t => new AssignmentRow(
+            t,
+            // 取り込んだ題名は「課題名（授業名・23:59 締切）」なので、授業名の部分は省く
+            ShortTitle(t.Title, row.Course.Name),
+            t.Completed ? "提出済み・完了" : TaskFormat.DueLabel(t.DueDate) + DueTime(t.Title),
+            TaskFormat.DueBrush(t.DueDate, t.Completed),
+            t.Completed ? muted : ThemeService.Brush("TextBrush"),
+            t.Completed ? TextDecorations.Strikethrough : null,
+            t.Completed ? SymbolRegular.CheckmarkCircle24 : SymbolRegular.Circle24,
+            t.Completed ? ThemeService.Brush("SuccessBrush") : TaskFormat.DueBrush(t.DueDate, false))).ToList();
+        NoAssignmentText.Visibility = tasks.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        RefreshAnnouncements();
+    }
+
+    private void RefreshAnnouncements()
+    {
+        if (_shownCourse is not { } row)
+            return;
+        var items = App.Database.GetAnnouncements()
+            .Where(a => a.Source == AnnouncementSource.Lacs && a.CourseId == row.Course.Id)
+            .OrderByDescending(a => a.Created).Take(30)
+            .Select(a => new AnnouncementRow(a, _openAnnouncements.Contains(a.Id))).ToList();
+        AnnouncementList.ItemsSource = items;
+        NoAnnouncementText.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static string ShortTitle(string title, string course)
+    {
+        var mark = title.LastIndexOf('（');
+        return mark > 0 && title[(mark + 1)..].StartsWith(course, StringComparison.Ordinal) ? title[..mark] : title;
+    }
+
+    // 題名の終わりの「23:59 締切）」から、締切の時刻を拾う
+    private static string DueTime(string title) =>
+        Regex.Match(title, @"(\d{1,2}:\d{2}) 締切）$") is { Success: true } m ? $" {m.Groups[1].Value}" : "";
+
+    private void OnAssignmentClick(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is not AssignmentRow row)
+            return;
+        // タスクのもとの課題は「授業の id/成績表の列の id」
+        if (App.Database.LacsItemOfTask(row.Task.Id)?.Split('/') is [var course, var column])
+            OpenAssignment(course, column);
+    }
+
+    private void OnAnnouncementClick(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is not AnnouncementRow row)
+            return;
+        if (!_openAnnouncements.Remove(row.Item.Id))
+        {
+            _openAnnouncements.Add(row.Item.Id);
+            if (!row.Item.Seen)
+                App.Database.MarkAnnouncementSeen(row.Item.Id, row.Item.Source);
+        }
+        RefreshAnnouncements();
+    }
+
+    /// <summary>
+    /// 境目をドラッグし終えたら、その幅を覚える。とても細くしたら、その欄を隠す（幅は前のまま覚えておく）。
+    /// </summary>
+    private void OnSplitterDragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        var isList = sender == ListSplitter;
+        var width = (isList ? ListColumn : InfoColumn).ActualWidth;
+        if (width < HideBelow)
+        {
+            if (isList)
+                ShowList(false);
+            else
+            {
+                ShowInfo(false);
+                App.Database.SetSetting(SettingKeys.LacsInfoPanel, "0");
+            }
+            return;
+        }
+        width = Math.Clamp(width, MinPanelWidth, MaxPanelWidth);
+        App.Database.SetSetting(isList ? SettingKeys.LacsListWidth : SettingKeys.LacsInfoWidth,
+            width.ToString("0", System.Globalization.CultureInfo.InvariantCulture));
+        (isList ? ListColumn : InfoColumn).Width = new GridLength(width);
+    }
+
+    private void OnInfoToggleClick(object sender, RoutedEventArgs e)
+    {
+        var show = InfoPanel.Visibility != Visibility.Visible;
+        ShowInfo(show);
+        App.Database.SetSetting(SettingKeys.LacsInfoPanel, show ? "1" : "0");
+    }
+
+    private void ShowInfo(bool show)
+    {
+        InfoPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        InfoColumn.Width = new GridLength(show ? InfoWidth : 0);
+        // 隠しているときは境目もなくす（ページを端まで広げる）
+        InfoSplitter.Visibility = InfoPanel.Visibility;
+        InfoSplitColumn.Width = new GridLength(show ? 10 : 0);
+        InfoToggleIcon.Symbol = show ? SymbolRegular.PanelRightContract24 : SymbolRegular.PanelRight24;
+    }
+
+    // ---- 資料のまとめ保存 -----------------------------------------------
+    /// <summary>資料を保存する場所（ダウンロード\LACS\授業名）。LACS-MCP と同じ置き方。</summary>
+    private static string MaterialsFolder(LacsCourse course) =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "LACS",
+            LacsClient.SafeName(course.Name));
+
+    private async void OnSaveMaterialsClick(object sender, RoutedEventArgs e)
+    {
+        if (_core is null || _shownCourse is not { } row || _savingMaterials)
+            return;
+        _savingMaterials = true;
+        SaveMaterialsButton.IsEnabled = false;
+        MaterialsText.Text = "資料を探しています…";
+        var root = MaterialsFolder(row.Course);
+        int saved = 0, skipped = 0, failed = 0;
+        try
+        {
+            using var client = await BrowserClientAsync();
+            var files = await client.ReadMaterialsAsync(row.Course.Id);
+            if (files.Count == 0)
+            {
+                MaterialsText.Text = "この授業には、保存できるファイルが見つかりませんでした。";
+                return;
+            }
+            for (var i = 0; i < files.Count; i++)
+            {
+                var file = files[i];
+                MaterialsText.Text = $"保存しています…（{i + 1} / {files.Count}）{file.Name}";
+                var folder = Path.Combine([root, .. file.Folder.Split('/', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(LacsClient.SafeName)]);
+                try
+                {
+                    if (await client.DownloadAsync(file, Path.Combine(folder, LacsClient.SafeName(file.Name))))
+                        saved++;
+                    else
+                        skipped++;
+                }
+                catch (LacsLoginException)
+                {
+                    throw;
+                }
+                catch (Exception error) when (error is LacsApiException or System.Net.Http.HttpRequestException
+                                                  or TaskCanceledException or IOException or UnauthorizedAccessException)
+                {
+                    failed++;
+                    NagasakiLog.Write($"LACS: 資料を保存できませんでした（{error.Message}）");
+                }
+            }
+            MaterialsText.Text = $"新しく {saved} 件保存しました" + (skipped > 0 ? $"（保存済み {skipped} 件）" : "")
+                                 + (failed > 0 ? $"。{failed} 件は保存できませんでした" : "") + "。";
+            OpenMaterialsButton.Visibility = Directory.Exists(root) ? Visibility.Visible : Visibility.Collapsed;
+            if (saved > 0)
+                Main.Notify($"「{row.Course.Name}」の資料を {saved} 件保存しました。");
+        }
+        catch (LacsLoginException)
+        {
+            MaterialsText.Text = "LACS のログインが切れています。上の ⟳ で読み込み直すと、ログインの画面になります。";
+        }
+        catch (Exception error) when (error is LacsApiException or System.Net.Http.HttpRequestException
+                                          or System.Text.Json.JsonException or TaskCanceledException)
+        {
+            MaterialsText.Text = "資料を探せませんでした（" + error.Message + "）。";
+        }
+        finally
+        {
+            _savingMaterials = false;
+            SaveMaterialsButton.IsEnabled = true;
+        }
+    }
+
+    private void OnOpenMaterialsClick(object sender, RoutedEventArgs e)
+    {
+        if (_shownCourse is { } row && Directory.Exists(MaterialsFolder(row.Course)))
+            Process.Start(new ProcessStartInfo { FileName = MaterialsFolder(row.Course), UseShellExecute = true });
     }
 
     // ---- PDF などのファイル ---------------------------------------------
@@ -242,10 +575,17 @@ public partial class LacsPage : UserControl, IDisposable
         _core?.Source is { } source && FilePage.Match(source) is { Success: true } m
             ? (m.Groups[1].Value, m.Groups[2].Value) : null;
 
-    private void UpdateBigPdfButton()
+    /// <summary>今開いているのが、霽月が受け取って置いた PDF なら、そのファイル。</summary>
+    private string? CurrentSavedPdf() =>
+        _core?.Source is { } source && Uri.TryCreate(source, UriKind.Absolute, out var uri) && uri.IsFile
+        && uri.LocalPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) && File.Exists(uri.LocalPath)
+            ? uri.LocalPath : null;
+
+    private void UpdateFileButtons()
     {
         BigPdfButton.Visibility = CurrentFilePage() is null ? Visibility.Collapsed : Visibility.Visible;
         BigPdfButton.IsEnabled = true;
+        SavePdfButton.Visibility = CurrentSavedPdf() is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private async void OnBigPdfClick(object sender, RoutedEventArgs e)
@@ -256,9 +596,7 @@ public partial class LacsPage : UserControl, IDisposable
         StatusText.Text = "資料を開いています…";
         try
         {
-            var cookies = await _core.CookieManager.GetCookiesAsync($"https://{NagasakiUniversity.LacsHost}");
-            using var client = new LacsClient(string.Join("; ", cookies.Select(c => $"{c.Name}={c.Value}")),
-                _core.Settings.UserAgent);
+            using var client = await BrowserClientAsync();
             if (await client.FileUrlAsync(file.Course, file.Content) is { } url)
             {
                 // ファイルによって、そのまま表示されるものと、ダウンロードになるもの（OnDownloadStarting で開く）がある
@@ -279,8 +617,36 @@ public partial class LacsPage : UserControl, IDisposable
         BigPdfButton.IsEnabled = true;
     }
 
+    private void OnSavePdfClick(object sender, RoutedEventArgs e) => SaveCurrentPdf();
+
+    /// <summary>開いている PDF を、好きな場所にコピーして保存する（最初はダウンロードフォルダ）。</summary>
+    private void SaveCurrentPdf()
+    {
+        if (CurrentSavedPdf() is not { } path)
+            return;
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "PDF を保存",
+            FileName = Path.GetFileName(path),
+            DefaultExt = ".pdf",
+            Filter = "PDF (*.pdf)|*.pdf",
+            InitialDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"),
+        };
+        if (dialog.ShowDialog(Main) != true)
+            return;
+        try
+        {
+            File.Copy(path, dialog.FileName, overwrite: true);
+            Main.Notify($"PDF を保存しました。\n{dialog.FileName}", seconds: 5);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Main.Notify($"PDF を保存できませんでした。\n{error.Message}", ControlAppearance.Danger, 6);
+        }
+    }
+
     /// <summary>
-    /// ダウンロードになるファイルのうち PDF は、霽月のフォルダに保存してから、このページの中で開く。
+    /// ダウンロードになるファイルのうち PDF は、霽月のフォルダに置いてから、このページの中で開く（「この PDF を保存」で好きな場所に保存できる）。
     /// ほかの種類（Word や PowerPoint など）は、ふだんどおり「ダウンロード」フォルダに保存する。
     /// </summary>
     private void OnDownloadStarting(object? sender, CoreWebView2DownloadStartingEventArgs e)
@@ -293,7 +659,7 @@ public partial class LacsPage : UserControl, IDisposable
             return;
 
         Directory.CreateDirectory(AppPaths.LacsFilesDir);
-        var path = UniquePath(Path.Combine(AppPaths.LacsFilesDir, SafeName(name)));
+        var path = LacsClient.FreePath(Path.Combine(AppPaths.LacsFilesDir, LacsClient.SafeName(name == "" ? "file.pdf" : name)));
         e.ResultFilePath = path;
         e.Handled = true; // Edge のダウンロードの吹き出しは出さない
         StatusText.Text = $"{Path.GetFileName(path)} を開いています…";
@@ -304,29 +670,6 @@ public partial class LacsPage : UserControl, IDisposable
             else if (download.State == CoreWebView2DownloadState.Interrupted)
                 StatusText.Text = "ファイルを開けませんでした（" + download.InterruptReason + "）。";
         };
-    }
-
-    private static string SafeName(string name)
-    {
-        foreach (var c in Path.GetInvalidFileNameChars())
-            name = name.Replace(c, '_');
-        return name == "" ? "file.pdf" : name;
-    }
-
-    /// <summary>同じ名前のファイルがあれば「名前 (2).pdf」のようにする。</summary>
-    private static string UniquePath(string path)
-    {
-        if (!File.Exists(path))
-            return path;
-        var dir = Path.GetDirectoryName(path)!;
-        var stem = Path.GetFileNameWithoutExtension(path);
-        var ext = Path.GetExtension(path);
-        for (var i = 2; ; i++)
-        {
-            var candidate = Path.Combine(dir, $"{stem} ({i}){ext}");
-            if (!File.Exists(candidate))
-                return candidate;
-        }
     }
 
     private static void CleanOldFiles()
@@ -371,7 +714,7 @@ public partial class LacsPage : UserControl, IDisposable
     private async void OnReloadClick(object sender, RoutedEventArgs e)
     {
         // 一覧が出ていなければ、一覧から読み直す
-        if (CourseList.ItemsSource is null)
+        if (_allCourses.Count == 0)
             await LoadCoursesAsync();
         else
             _core?.Reload();
@@ -384,22 +727,30 @@ public partial class LacsPage : UserControl, IDisposable
     private void ShowList(bool show)
     {
         ListPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        ListColumn.Width = show ? new GridLength(260) : new GridLength(0);
+        ListColumn.Width = show ? new GridLength(ListWidth) : new GridLength(0);
+        ListSplitter.Visibility = ListPanel.Visibility;
+        ListSplitColumn.Width = new GridLength(show ? 10 : 0);
         ListToggleIcon.Symbol = show ? SymbolRegular.PanelLeftContract24 : SymbolRegular.PanelLeftExpand24;
     }
 
     private void OnFullScreenClick(object sender, RoutedEventArgs e) => SetFullScreen(!Main.IsImmersive);
 
+    // 全画面にする前に「課題と連絡」を出していたか（全画面をやめたら元に戻す）
+    private bool _infoBeforeFullScreen;
+
     /// <summary>
-    /// 全画面: 霽月の左メニューと授業の一覧を隠し、窓を画面いっぱいにする。false で元に戻す。
+    /// 全画面: 霽月の左メニューと授業の一覧・課題と連絡を隠し、窓を画面いっぱいにする。false で元に戻す。
     /// ほかの画面に移ったときは、霽月の側（MainWindow）が元に戻し、ExitFullScreen で一覧も戻す。
     /// </summary>
     private void SetFullScreen(bool on)
     {
         if (on == Main.IsImmersive)
             return;
+        if (on)
+            _infoBeforeFullScreen = InfoPanel.Visibility == Visibility.Visible;
         Main.SetImmersive(on);
         ShowList(!on);
+        ShowInfo(!on && _infoBeforeFullScreen);
         FullScreenButton.Content = on ? "全画面をやめる" : "全画面";
     }
 
@@ -407,6 +758,7 @@ public partial class LacsPage : UserControl, IDisposable
     public void ExitFullScreen()
     {
         ShowList(true);
+        ShowInfo(_infoBeforeFullScreen || App.Database.GetSetting(SettingKeys.LacsInfoPanel, "1") == "1");
         FullScreenButton.Content = "全画面";
     }
 
@@ -434,6 +786,11 @@ public partial class LacsPage : UserControl, IDisposable
         else if (e.Key == Key.F5)
         {
             _core?.Reload();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.S && Keyboard.Modifiers == ModifierKeys.Control && CurrentSavedPdf() is not null)
+        {
+            SaveCurrentPdf();
             e.Handled = true;
         }
     }

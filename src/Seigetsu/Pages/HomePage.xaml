@@ -51,7 +51,7 @@
                             <ui:SymbolIcon Symbol="TaskListSquareLtr24" FontSize="18" Foreground="{DynamicResource AccentBrush}" />
                             <TextBlock Text="未完了のタスク" Style="{StaticResource Muted}" Margin="8,0,0,0" VerticalAlignment="Center" />
                         </StackPanel>
-                        <TextBlock x:Name="OpenTasksText" FontSize="30" FontWeight="Bold" Margin="0,8,0,0"
+                        <TextBlock x:Name="OpenTasksText" FontSize="34" FontWeight="Light" Margin="0,6,0,0"
                                    Foreground="{DynamicResource TextBrush}" />
                     </StackPanel>
                 </Border>
@@ -61,7 +61,7 @@
                             <ui:SymbolIcon Symbol="Timer24" FontSize="18" Foreground="{DynamicResource AccentBrush}" />
                             <TextBlock Text="今日の作業時間" Style="{StaticResource Muted}" Margin="8,0,0,0" VerticalAlignment="Center" />
                         </StackPanel>
-                        <TextBlock x:Name="TodayWorkText" FontSize="30" FontWeight="Bold" Margin="0,8,0,0"
+                        <TextBlock x:Name="TodayWorkText" FontSize="34" FontWeight="Light" Margin="0,6,0,0"
                                    Foreground="{DynamicResource TextBrush}" />
                     </StackPanel>
                 </Border>
@@ -69,9 +69,9 @@
                     <StackPanel>
                         <StackPanel Orientation="Horizontal">
                             <ui:SymbolIcon Symbol="DataBarVertical24" FontSize="18" Foreground="{DynamicResource AccentBrush}" />
-                            <TextBlock Text="これまでの作業時間" Style="{StaticResource Muted}" Margin="8,0,0,0" VerticalAlignment="Center" />
+                            <TextBlock Text="累計の作業時間" Style="{StaticResource Muted}" Margin="8,0,0,0" VerticalAlignment="Center" />
                         </StackPanel>
-                        <TextBlock x:Name="TotalWorkText" FontSize="30" FontWeight="Bold" Margin="0,8,0,0"
+                        <TextBlock x:Name="TotalWorkText" FontSize="34" FontWeight="Light" Margin="0,6,0,0"
                                    Foreground="{DynamicResource TextBrush}" />
                     </StackPanel>
                 </Border>

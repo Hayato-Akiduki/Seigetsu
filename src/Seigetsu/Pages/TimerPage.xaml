@@ -25,7 +25,7 @@
                 </ListBox>
 
                 <TextBlock x:Name="PhaseText" HorizontalAlignment="Center" FontSize="16" FontWeight="Bold" />
-                <TextBlock x:Name="TimeText" HorizontalAlignment="Center" FontSize="76" FontWeight="Bold"
+                <TextBlock x:Name="TimeText" HorizontalAlignment="Center" FontSize="80" FontWeight="Light"
                            FontFamily="Cascadia Mono, Consolas" Foreground="{DynamicResource TextBrush}"
                            Margin="0,0,0,8" />
                 <ProgressBar x:Name="Progress" Height="8" Maximum="1" Width="440" Margin="0,0,0,26"
@@ -66,14 +66,14 @@
                     <Border Background="{DynamicResource SubtleBrush}" CornerRadius="12" Padding="16,12" Margin="0,0,8,0">
                         <StackPanel>
                             <TextBlock Text="今日の集中" Style="{StaticResource Muted}" FontSize="12" />
-                            <TextBlock x:Name="TodayText" FontSize="20" FontWeight="Bold" Margin="0,4,0,0"
+                            <TextBlock x:Name="TodayText" FontSize="24" FontWeight="Light" Margin="0,4,0,0"
                                        Foreground="{DynamicResource TextBrush}" />
                         </StackPanel>
                     </Border>
                     <Border Background="{DynamicResource SubtleBrush}" CornerRadius="12" Padding="16,12" Margin="8,0,0,0">
                         <StackPanel>
                             <TextBlock Text="直近7日間" Style="{StaticResource Muted}" FontSize="12" />
-                            <TextBlock x:Name="WeekText" FontSize="20" FontWeight="Bold" Margin="0,4,0,0"
+                            <TextBlock x:Name="WeekText" FontSize="24" FontWeight="Light" Margin="0,4,0,0"
                                        Foreground="{DynamicResource TextBrush}" />
                         </StackPanel>
                     </Border>

@@ -73,8 +73,8 @@
                         <ui:SymbolIcon Symbol="WeatherMoon24" Filled="True" FontSize="30"
                                        Foreground="{DynamicResource MoonBrush}" />
                         <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                            <TextBlock Text="霽 月" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource MoonBrush}" />
-                            <TextBlock Text="SEIGETSU" FontSize="10" FontWeight="Bold"
+                            <TextBlock Text="霽 月" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource MoonBrush}" />
+                            <TextBlock Text="SEIGETSU" FontSize="9" FontWeight="SemiBold"
                                        Foreground="{DynamicResource SidebarMutedBrush}" />
                         </StackPanel>
                     </StackPanel>
@@ -122,6 +122,7 @@
                          Background="Transparent" BorderThickness="0" Padding="0"
                          ItemContainerStyle="{StaticResource NavItemStyle}"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.VerticalScrollBarVisibility="Hidden"
                          SelectionChanged="OnNavSelectionChanged">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
@@ -151,13 +152,13 @@
         <Border x:Name="WindowVeil" Grid.Column="1" Background="{DynamicResource BgBrush}" Visibility="Collapsed" />
 
         <!-- 画面の中身 -->
-        <ContentControl x:Name="PageHost" Grid.Column="1" Margin="36,48,36,28" Focusable="False" />
+        <ContentControl x:Name="PageHost" Grid.Column="1" Margin="44,52,44,32" Focusable="False" />
 
         <!-- 画面の下に出る小さなお知らせ（v6 の Toast の代わり） -->
         <ui:SnackbarPresenter x:Name="SnackbarHost" Grid.Column="1" VerticalAlignment="Bottom"
                               MaxWidth="560" Margin="0,0,0,24" Panel.ZIndex="5" />
 
         <!-- タイトルバー（最小化・最大化・閉じる）。左メニューの上もつかんで動かせる -->
-        <ui:TitleBar Grid.ColumnSpan="2" VerticalAlignment="Top" Title="" Panel.ZIndex="10" />
+        <ui:TitleBar x:Name="MainTitleBar" Grid.ColumnSpan="2" VerticalAlignment="Top" Title="" Panel.ZIndex="10" />
     </Grid>
 </ui:FluentWindow>

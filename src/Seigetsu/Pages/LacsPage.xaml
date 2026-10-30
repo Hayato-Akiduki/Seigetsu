@@ -4,26 +4,100 @@
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
              Loaded="OnLoaded" PreviewKeyDown="OnPreviewKeyDown">
-    <!-- 長崎大学モードのときだけ左メニューに出るページ。左に授業の一覧、右に授業のページ。配られた PDF もここで開く -->
+    <!--
+      長崎大学モードのときだけ左メニューに出るページ。
+      左に授業の一覧（今の学期だけ・検索）、まん中に授業のページ、右にその授業の課題・連絡事項・資料。配られた PDF もここで開く
+    -->
+    <UserControl.Resources>
+        <!-- 右の「課題と連絡」の 1 行。押せる行 -->
+        <Style x:Key="InfoRow" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{DynamicResource CardBrush}" CornerRadius="8" Padding="10,7"
+                                BorderBrush="{DynamicResource LineBrush}" BorderThickness="1">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- 欄と欄の境目。ふだんは見えず、マウスを乗せると細い線が出る -->
+        <Style x:Key="ColumnSplitter" TargetType="GridSplitter">
+            <Setter Property="Width" Value="10" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="ResizeBehavior" Value="PreviousAndNext" />
+            <Setter Property="ResizeDirection" Value="Columns" />
+            <Setter Property="ShowsPreview" Value="False" />
+            <Setter Property="Focusable" Value="True" />
+            <Setter Property="Cursor" Value="SizeWE" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="GridSplitter">
+                        <Border Background="Transparent">
+                            <Border x:Name="Line" Width="3" CornerRadius="2" Margin="0,24"
+                                    Background="{DynamicResource LineBrush}" Opacity="0" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Line" Property="Opacity" Value="1" />
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="Line" Property="Opacity" Value="1" />
+                                <Setter TargetName="Line" Property="Background" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Line" Property="Opacity" Value="1" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="InfoHeading" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="2,14,0,6" />
+            <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+        </Style>
+    </UserControl.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition x:Name="ListColumn" Width="260" />
-            <ColumnDefinition Width="*" />
+            <!-- 授業の一覧・境目・授業のページ・境目・課題と連絡。境目はドラッグで動かせる（幅は覚えておく） -->
+            <ColumnDefinition x:Name="ListColumn" Width="260" MinWidth="0" />
+            <ColumnDefinition x:Name="ListSplitColumn" Width="10" />
+            <ColumnDefinition Width="*" MinWidth="320" />
+            <ColumnDefinition x:Name="InfoSplitColumn" Width="10" />
+            <ColumnDefinition x:Name="InfoColumn" Width="300" MinWidth="0" />
         </Grid.ColumnDefinitions>
 
         <!-- 操作の帯 -->
-        <Grid Grid.ColumnSpan="2" Margin="0,0,0,10">
+        <Grid Grid.ColumnSpan="5" Margin="0,0,0,2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel Orientation="Horizontal">
-                <TextBlock Text="LACS" FontSize="22" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,14,0"
+                <TextBlock Text="LACS" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,14,0"
                            Foreground="{DynamicResource TextBrush}" />
                 <ui:Button Style="{StaticResource IconButton}" Click="OnListToggleClick" Margin="0,0,4,0"
                            ToolTip="授業の一覧を隠す・出す" AutomationProperties.Name="授業の一覧を隠す・出す">
@@ -51,27 +125,52 @@
                            Icon="{ui:SymbolIcon DocumentPdf24}" Padding="12,6" Margin="8,0,0,0"
                            Click="OnBigPdfClick" Visibility="Collapsed"
                            ToolTip="LACS の画面を通さずに、この資料を大きく開きます" />
+                <!-- 開いている PDF（霽月が受け取ったもの）を、好きな場所に保存する -->
+                <ui:Button x:Name="SavePdfButton" Content="この PDF を保存" Icon="{ui:SymbolIcon Save24}"
+                           Padding="12,6" Margin="8,0,0,0" Click="OnSavePdfClick" Visibility="Collapsed"
+                           ToolTip="開いている PDF を、好きな場所に保存します（Ctrl+S）" />
                 <ui:Button x:Name="FullScreenButton" Content="全画面" Icon="{ui:SymbolIcon FullScreenMaximize24}"
                            Padding="12,6" Margin="8,0,0,0"
                            Click="OnFullScreenClick" ToolTip="左のメニューと授業の一覧を隠して、画面いっぱいにします（F11）" />
                 <ui:Button Content="ブラウザで開く" Icon="{ui:SymbolIcon Open24}" Padding="12,6" Margin="8,0,0,0"
                            Click="OnOpenInBrowserClick" ToolTip="今のページをふだんのブラウザで開きます" />
+                <ui:Button Style="{StaticResource IconButton}" Click="OnInfoToggleClick" Margin="8,0,0,0"
+                           ToolTip="課題と連絡を隠す・出す" AutomationProperties.Name="課題と連絡を隠す・出す">
+                    <ui:SymbolIcon x:Name="InfoToggleIcon" Symbol="PanelRightContract24" FontSize="18"
+                                   Foreground="{DynamicResource TextBrush}" />
+                </ui:Button>
             </WrapPanel>
         </Grid>
 
+        <!-- ページを読み込んでいる間だけ動く細い帯 -->
+        <ProgressBar x:Name="LoadingBar" Grid.Row="1" Grid.ColumnSpan="5" Height="2" Margin="0,0,0,4"
+                     IsIndeterminate="True" Visibility="Hidden" BorderThickness="0"
+                     Background="Transparent" Foreground="{DynamicResource AccentBrush}" />
+
         <!-- 授業の一覧 -->
-        <Border x:Name="ListPanel" Grid.Row="1" Margin="0,0,12,0" Padding="8" CornerRadius="10"
+        <Border x:Name="ListPanel" Grid.Row="2" Padding="8" CornerRadius="10"
                 Background="{DynamicResource SubtleBrush}">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <TextBlock Text="授業" FontSize="13" FontWeight="Bold" Margin="6,2,0,6"
+                <Grid Margin="6,2,4,6">
+                    <TextBlock Text="授業" FontSize="13" FontWeight="Bold" Foreground="{DynamicResource MutedBrush}" />
+                    <TextBlock x:Name="CountText" HorizontalAlignment="Right" FontSize="11"
+                               Foreground="{DynamicResource MutedBrush}" />
+                </Grid>
+                <ui:TextBox x:Name="SearchBox" Grid.Row="1" PlaceholderText="授業を探す" Margin="0,0,0,6"
+                            Icon="{ui:SymbolIcon Search24}" TextChanged="OnSearchChanged"
+                            AutomationProperties.Name="授業を探す" />
+                <CheckBox x:Name="CurrentOnlyBox" Grid.Row="2" Content="今の学期の授業だけ" Margin="4,0,0,6"
+                          Click="OnCurrentOnlyClick" IsChecked="True" FontSize="12"
+                          ToolTip="LACS の学期の情報から、今行われている授業だけを出します" />
+                <TextBlock x:Name="ListMessage" Grid.Row="3" FontSize="12" TextWrapping="Wrap" Margin="6,4"
                            Foreground="{DynamicResource MutedBrush}" />
-                <TextBlock x:Name="ListMessage" Grid.Row="1" FontSize="12" TextWrapping="Wrap" Margin="6,4"
-                           Foreground="{DynamicResource MutedBrush}" />
-                <ListBox x:Name="CourseList" Grid.Row="1" Background="Transparent" BorderThickness="0"
+                <ListBox x:Name="CourseList" Grid.Row="3" Background="Transparent" BorderThickness="0"
                          SelectionChanged="OnCourseSelected" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                     <!-- 読み上げソフトには授業名を読ませる（何もしないと中身の記録がそのまま読まれる） -->
                     <ListBox.ItemContainerStyle>
@@ -84,7 +183,7 @@
                             <StackPanel Margin="0,2">
                                 <TextBlock Text="{Binding Name}" FontSize="13" TextWrapping="Wrap"
                                            Foreground="{DynamicResource TextBrush}" />
-                                <TextBlock Text="{Binding Code}" FontSize="10" TextTrimming="CharacterEllipsis"
+                                <TextBlock Text="{Binding Sub}" FontSize="10" TextTrimming="CharacterEllipsis"
                                            Foreground="{DynamicResource MutedBrush}" />
                             </StackPanel>
                         </DataTemplate>
@@ -93,9 +192,103 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="1" Grid.Column="1" CornerRadius="10" ClipToBounds="True"
+        <GridSplitter x:Name="ListSplitter" Grid.Row="2" Grid.Column="1" Style="{StaticResource ColumnSplitter}"
+                      DragCompleted="OnSplitterDragCompleted"
+                      ToolTip="ドラッグで授業の一覧の幅を変えられます" AutomationProperties.Name="授業の一覧の幅" />
+
+        <Border Grid.Row="2" Grid.Column="2" CornerRadius="10" ClipToBounds="True"
                 BorderBrush="{DynamicResource LineBrush}" BorderThickness="1">
             <wv2:WebView2 x:Name="Browser" />
+        </Border>
+
+        <!-- 選んだ授業の課題・連絡事項・資料 -->
+        <GridSplitter x:Name="InfoSplitter" Grid.Row="2" Grid.Column="3" Style="{StaticResource ColumnSplitter}"
+                      DragCompleted="OnSplitterDragCompleted"
+                      ToolTip="ドラッグで課題と連絡の幅を変えられます" AutomationProperties.Name="課題と連絡の幅" />
+
+        <Border x:Name="InfoPanel" Grid.Row="2" Grid.Column="4" Padding="12,10" CornerRadius="10"
+                Background="{DynamicResource SubtleBrush}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
+                    <TextBlock x:Name="InfoTitle" FontSize="15" FontWeight="Bold" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextBrush}" Text="授業を選ぶと、課題と連絡事項がここに出ます" />
+                    <TextBlock x:Name="InfoSub" FontSize="11" Margin="0,2,0,0" Foreground="{DynamicResource MutedBrush}" />
+
+                    <StackPanel x:Name="InfoBody" Visibility="Collapsed">
+                        <!-- 課題（自動更新でタスクに取り込んだもの） -->
+                        <TextBlock Text="課題" Style="{StaticResource InfoHeading}" />
+                        <TextBlock x:Name="NoAssignmentText" Text="締切のある課題はありません。" FontSize="12"
+                                   Foreground="{DynamicResource MutedBrush}" Margin="2,0,0,4" />
+                        <ItemsControl x:Name="AssignmentList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource InfoRow}" Click="OnAssignmentClick"
+                                            ToolTip="LACS の課題の画面を開く" AutomationProperties.Name="{Binding Title}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <ui:SymbolIcon Symbol="{Binding Icon}" FontSize="16" Margin="0,1,8,0"
+                                                           VerticalAlignment="Top" Foreground="{Binding IconBrush}" />
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="{Binding Title}" FontSize="13" TextWrapping="Wrap"
+                                                           Foreground="{Binding TitleBrush}"
+                                                           TextDecorations="{Binding Decorations}" />
+                                                <TextBlock Text="{Binding DueText}" FontSize="11" Margin="0,2,0,0"
+                                                           Foreground="{Binding DueBrush}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- 連絡事項（自動更新で読んだもの）。押すと本文を開く・閉じる -->
+                        <TextBlock Text="連絡事項" Style="{StaticResource InfoHeading}" />
+                        <TextBlock x:Name="NoAnnouncementText" Text="連絡事項はありません。" FontSize="12"
+                                   Foreground="{DynamicResource MutedBrush}" Margin="2,0,0,4" />
+                        <ItemsControl x:Name="AnnouncementList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource InfoRow}" Click="OnAnnouncementClick"
+                                            ToolTip="押すと本文を開く・閉じる" AutomationProperties.Name="{Binding Title}">
+                                        <StackPanel>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Title}" FontSize="13" TextWrapping="Wrap"
+                                                           FontWeight="{Binding TitleWeight}"
+                                                           Foreground="{DynamicResource TextBrush}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding DateText}" FontSize="11" Margin="8,1,0,0"
+                                                           Foreground="{DynamicResource MutedBrush}" />
+                                            </Grid>
+                                            <TextBlock Text="{Binding Body}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"
+                                                       Foreground="{DynamicResource TextBrush}"
+                                                       Visibility="{Binding BodyVisibility}" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- 資料 -->
+                        <TextBlock Text="資料" Style="{StaticResource InfoHeading}" />
+                        <TextBlock FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="2,0,0,8"
+                                   Text="この授業に置かれているファイル（ページに埋め込まれた PDF も）を、ダウンロードフォルダの「LACS」にまとめて保存します。保存済みのものは飛ばします。" />
+                        <ui:Button x:Name="SaveMaterialsButton" Content="資料をまとめて保存" Appearance="Primary"
+                                   Icon="{ui:SymbolIcon ArrowDownload24}" Padding="12,7" HorizontalAlignment="Stretch"
+                                   Click="OnSaveMaterialsClick" />
+                        <TextBlock x:Name="MaterialsText" FontSize="12" TextWrapping="Wrap" Margin="2,8,0,0"
+                                   Foreground="{DynamicResource MutedBrush}" />
+                        <ui:Button x:Name="OpenMaterialsButton" Content="保存したフォルダを開く" Icon="{ui:SymbolIcon FolderOpen24}"
+                                   Padding="12,7" Margin="0,8,0,0" HorizontalAlignment="Stretch"
+                                   Click="OnOpenMaterialsClick" Visibility="Collapsed" />
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
         </Border>
     </Grid>
 </UserControl>

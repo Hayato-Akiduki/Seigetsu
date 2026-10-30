@@ -47,6 +47,11 @@ public static class SettingKeys
     public const string NagasakiMode = "nagasaki_mode";         // 1 / 0 長崎大学モード（v7 だけの設定）
     public const string NagasakiSyncedAt = "nagasaki_synced_at";  // 大学の情報を最後に読み込めた日時
     public const string NagasakiStatus = "nagasaki_status";       // 前回の自動更新の結果（設定画面に出す 1 行）
+    public const string LacsCurrentOnly = "lacs_current_only";    // 1 / 0 LACS の画面で、今の学期の授業だけ出すか
+    public const string LacsInfoPanel = "lacs_info_panel";        // 1 / 0 LACS の画面の右に「課題と連絡」を出すか
+    public const string LacsLastCourse = "lacs_last_course";      // LACS の画面で最後に選んだ授業の id
+    public const string LacsListWidth = "lacs_list_width";        // LACS の画面の授業の一覧の幅
+    public const string LacsInfoWidth = "lacs_info_width";        // LACS の画面の「課題と連絡」の幅
     // 背景画像を出す場所（v7 だけの設定。1 / 0）
     public const string BackgroundBanner = "background_on_banner"; // ホームの上帯
     public const string BackgroundWindow = "background_on_window"; // 窓全体

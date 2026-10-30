@@ -26,25 +26,25 @@
             <Border Style="{StaticResource Card}" Margin="6,0" Padding="18,14">
                 <StackPanel>
                     <TextBlock Text="今日" Style="{StaticResource Muted}" FontSize="12" />
-                    <TextBlock x:Name="TodayText" FontSize="22" FontWeight="Bold" Margin="0,4,0,0" Foreground="{DynamicResource TextBrush}" />
+                    <TextBlock x:Name="TodayText" FontSize="26" FontWeight="Light" Margin="0,4,0,0" Foreground="{DynamicResource TextBrush}" />
                 </StackPanel>
             </Border>
             <Border Style="{StaticResource Card}" Margin="6,0" Padding="18,14">
                 <StackPanel>
                     <TextBlock Text="直近7日間" Style="{StaticResource Muted}" FontSize="12" />
-                    <TextBlock x:Name="WeekText" FontSize="22" FontWeight="Bold" Margin="0,4,0,0" Foreground="{DynamicResource TextBrush}" />
+                    <TextBlock x:Name="WeekText" FontSize="26" FontWeight="Light" Margin="0,4,0,0" Foreground="{DynamicResource TextBrush}" />
                 </StackPanel>
             </Border>
             <Border Style="{StaticResource Card}" Margin="6,0" Padding="18,14">
                 <StackPanel>
                     <TextBlock Text="今月" Style="{StaticResource Muted}" FontSize="12" />
-                    <TextBlock x:Name="MonthText" FontSize="22" FontWeight="Bold" Margin="0,4,0,0" Foreground="{DynamicResource TextBrush}" />
+                    <TextBlock x:Name="MonthText" FontSize="26" FontWeight="Light" Margin="0,4,0,0" Foreground="{DynamicResource TextBrush}" />
                 </StackPanel>
             </Border>
             <Border Style="{StaticResource Card}" Margin="6,0" Padding="18,14">
                 <StackPanel>
                     <TextBlock Text="累計" Style="{StaticResource Muted}" FontSize="12" />
-                    <TextBlock x:Name="AllText" FontSize="22" FontWeight="Bold" Margin="0,4,0,0" Foreground="{DynamicResource TextBrush}" />
+                    <TextBlock x:Name="AllText" FontSize="26" FontWeight="Light" Margin="0,4,0,0" Foreground="{DynamicResource TextBrush}" />
                 </StackPanel>
             </Border>
         </UniformGrid>

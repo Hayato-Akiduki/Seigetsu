@@ -10,11 +10,24 @@ namespace Seigetsu.Services;
 /// <summary>LACS のログインが切れている（または入れていない）。</summary>
 public sealed class LacsLoginException(string reason) : Exception(reason);
 
-/// <summary>LACS の授業 1 つ。Id は API で使う内部の id（_123_1）、Code は授業の番号。</summary>
-public sealed record LacsCourse(string Id, string Code, string Name)
+/// <summary>
+/// LACS の授業 1 つ。Id は API で使う内部の id（_123_1）、Code は授業の番号。
+/// Term は学期の名前（例:「2026年度後期」。分からなければ空）、Current は今その学期の授業が行われているか。
+/// </summary>
+public sealed record LacsCourse(string Id, string Code, string Name, string Term = "", bool Current = true)
 {
     /// <summary>授業のページ（Ultra のコース一覧の画面）。</summary>
     public string Url => $"https://{NagasakiUniversity.LacsHost}/ultra/courses/{Id}/outline";
+}
+
+/// <summary>
+/// 授業の資料のファイル 1 つ。ファイルの項目なら EmbeddedUrl は null（添付から受け取る）、
+/// 本文に埋め込まれたファイルなら、そのアドレスと Xid（ファイルの番号）。Folder は LACS の中のフォルダの道すじ。
+/// </summary>
+public sealed record LacsFile(string CourseId, string ContentId, string? EmbeddedUrl, string Name, string Folder,
+    string Xid = "")
+{
+    public string Key => $"{ContentId}/{Xid}";
 }
 
 /// <summary>
@@ -38,7 +51,7 @@ public sealed record LacsResult(IReadOnlyList<LacsAssignment> Assignments, int C
 /// 2. 授業ごとの成績表の列（gradebook/columns）。課題やテストは必ず列を作り、締切（grading.due）はここにある
 /// 3. 自分の成績の状態（gradebook/users/{id}）。NeedsGrading / Graded なら提出済み
 /// </summary>
-public sealed class LacsClient : IDisposable
+public sealed partial class LacsClient : IDisposable
 {
     private const string Api = "/learn/api/public";
     private const int Parallel = 4;
@@ -96,14 +109,257 @@ public sealed class LacsClient : IDisposable
         }
     }
 
-    /// <summary>登録している授業（公開中のもの）を、名前の順に読む。ログインが切れていれば LacsLoginException。</summary>
+    /// <summary>
+    /// 登録している授業（公開中のもの）を、名前の順に読む。学期（Term）と、今の学期か（Current）も付ける。
+    /// ログインが切れていれば LacsLoginException。
+    /// </summary>
     public async Task<IReadOnlyList<LacsCourse>> ReadCoursesAsync()
     {
         using var me = await GetAsync($"{Api}/v1/users/me");
         var userId = me.RootElement.GetProperty("id").GetString()!;
-        return (await ReadCourseListAsync(userId))
+        return (await ReadCourseListAsync(userId, withTerms: true))
             .OrderBy(c => c.Name, StringComparer.CurrentCulture).ToList();
     }
+
+    // ---- 学期 -----------------------------------------------------------
+    private sealed record TermInfo(string Name, DateTimeOffset? Start, DateTimeOffset? End);
+
+    /// <summary>
+    /// 授業に学期を付ける。学期は terms/{id} の名前と期間（availability.duration）から決める（LACS-MCP と同じ考え）。
+    /// LACS の学期の終わりには成績をつける期間も入っている（前期は 10 月まで）ので、
+    /// 同じ種類（クォーター・前期後期）の次の学期が始まっていたら、前の学期は終わったとみなす。
+    /// 種類や日付が分からない学期は「今の学期」に入れる（まちがって隠さないように）。
+    /// </summary>
+    private async Task<List<LacsCourse>> WithTermsAsync(List<LacsCourse> courses, Dictionary<string, string> termOf)
+    {
+        var terms = new Dictionary<string, TermInfo>();
+        foreach (var id in termOf.Values.Distinct())
+        {
+            try
+            {
+                using var term = await GetAsync($"{Api}/v1/terms/{id}");
+                var root = term.RootElement;
+                DateTimeOffset? start = null, end = null;
+                if (root.TryGetProperty("availability", out var availability)
+                    && availability.TryGetProperty("duration", out var duration))
+                {
+                    if (DateTimeOffset.TryParse(Str(duration, "start"), CultureInfo.InvariantCulture, DateTimeStyles.None, out var s))
+                        start = s;
+                    if (DateTimeOffset.TryParse(Str(duration, "end"), CultureInfo.InvariantCulture, DateTimeStyles.None, out var e))
+                        end = e;
+                }
+                // 「2026年度後期 / 2026 Fall」のような名前は、日本語の方だけ残す
+                terms[id] = new TermInfo(Str(root, "name").Split(" / ")[0].Trim(), start, end);
+            }
+            catch (LacsApiException)
+            {
+                // 学期が読めない授業は、学期なし（今の学期）のまま
+            }
+        }
+
+        var now = DateTimeOffset.Now;
+        bool IsCurrent(TermInfo term)
+        {
+            var kind = TermKind(term.Name);
+            if (term.Start is not { } start || start > now)
+                return term.Start is null;
+            if (term.End is { } end && end < now)
+                return false;
+            if (kind is null or "year")
+                return true;
+            return !terms.Values.Any(t => TermKind(t.Name) == kind && t.Start is { } s && start < s && s <= now);
+        }
+
+        return courses.Select(c => termOf.TryGetValue(c.Id, out var id) && terms.TryGetValue(id, out var term)
+            ? c with { Term = term.Name, Current = IsCurrent(term) }
+            : c).ToList();
+    }
+
+    private static string? TermKind(string name)
+    {
+        var m = Regex.Match(name, "([1-4])Q|(前期|後期)|(通年)");
+        return !m.Success ? null : m.Groups[1].Success ? "quarter" : m.Groups[2].Success ? "half" : "year";
+    }
+
+    // ---- 資料（ファイル） -------------------------------------------------
+    /// <summary>
+    /// 授業の中にあるファイルを全部探す（LACS-MCP の materials と同じ）。フォルダの中もたどる。
+    /// ファイルの項目のほか、文書の本文や課題の説明に埋め込まれた PDF なども拾う。
+    /// まだ受けていない小テスト・試験は開かない（開くと時間が始まったり、回数を使ったりすることがあるため）。
+    /// </summary>
+    public async Task<IReadOnlyList<LacsFile>> ReadMaterialsAsync(string courseId, int maxItems = 400)
+    {
+        var files = new List<LacsFile>();
+        var seen = 0;
+
+        async Task WalkAsync(string? parentId, string folder, int depth)
+        {
+            var path = $"{Api}/v1/courses/{courseId}/contents" + (parentId is null ? "" : $"/{parentId}/children");
+            List<JsonElement> items;
+            try
+            {
+                items = await GetAllAsync(path);
+            }
+            catch (LacsApiException)
+            {
+                return; // 見られないフォルダは飛ばす
+            }
+            foreach (var item in items)
+            {
+                if (++seen > maxItems)
+                    return;
+                var id = Str(item, "id");
+                var title = Str(item, "title");
+                item.TryGetProperty("contentHandler", out var handler);
+                var kind = Str(handler, "id");
+                if (kind is "resource/x-bb-asmt-test-link" or "resource/x-bb-assessment" && QuizName().IsMatch(title))
+                    continue;
+                if (kind == "resource/x-bb-file")
+                {
+                    var name = handler.TryGetProperty("file", out var file) ? Str(file, "fileName") : "";
+                    files.Add(new LacsFile(courseId, id, null, name == "" ? title : name, folder));
+                }
+                var markup = Str(item, "body") + Str(handler, "instructions");
+                foreach (Match link in EmbeddedLink().Matches(markup))
+                {
+                    var url = WebUtility.HtmlDecode(link.Groups[1].Value);
+                    if (Xid().Match(url) is not { Success: true } xid)
+                        continue;
+                    var name = url.Split('?')[0].Split('/')[^1];
+                    if (BbFile().Match(link.Value) is { Success: true } raw)
+                    {
+                        try
+                        {
+                            using var info = JsonDocument.Parse(WebUtility.HtmlDecode(raw.Groups[1].Value));
+                            var fileName = Str(info.RootElement, "fileName");
+                            name = fileName != "" ? fileName : Str(info.RootElement, "displayName") is { Length: > 0 } d ? d : name;
+                        }
+                        catch (JsonException)
+                        {
+                        }
+                    }
+                    files.Add(new LacsFile(courseId, id, url, Uri.UnescapeDataString(name), folder, xid.Groups[1].Value));
+                }
+                var hasChildren = item.TryGetProperty("hasChildren", out var h) && h.ValueKind == JsonValueKind.True;
+                if (hasChildren && depth < 6)
+                {
+                    // フォルダとレッスンだけをフォルダにする（Ultra の文書は中身を同じフォルダのまま読む）
+                    var isPage = handler.ValueKind == JsonValueKind.Object && handler.TryGetProperty("isBbPage", out var p)
+                                 && p.ValueKind == JsonValueKind.True;
+                    var sub = kind is "resource/x-bb-folder" or "resource/x-bb-lesson" && !isPage
+                        ? $"{folder}/{title}".Trim('/') : folder;
+                    await WalkAsync(id, sub, depth + 1);
+                }
+            }
+        }
+
+        await WalkAsync(null, "", 0);
+        // 同じファイルが 2 か所から張られていることがある
+        return files.GroupBy(f => f.Key).Select(g => g.First()).ToList();
+    }
+
+    /// <summary>
+    /// ファイルを 1 つ保存する。同じ名前で同じ大きさのファイルがあれば保存しない（false）。
+    /// ファイルは LACS か Blackboard のファイル置き場（*.blackboard.com）からしか受け取らない。
+    /// </summary>
+    public async Task<bool> DownloadAsync(LacsFile file, string path)
+    {
+        var url = file.EmbeddedUrl ?? await FileUrlAsync(file.CourseId, file.ContentId)
+                  ?? throw new LacsApiException(404, "この資料にはファイルがありません");
+        var target = new Uri(new Uri($"https://{NagasakiUniversity.LacsHost}"), url);
+        using var plain = new HttpClient(new HttpClientHandler { UseCookies = false, AllowAutoRedirect = false })
+        {
+            Timeout = TimeSpan.FromMinutes(5),
+        };
+        for (var hop = 0; hop < 8; hop++)
+        {
+            if (target.Host.StartsWith("nuidp.", StringComparison.OrdinalIgnoreCase)
+                || target.AbsolutePath.Contains("/auth-saml/") || target.AbsolutePath.Contains("/webapps/login"))
+                throw new LacsLoginException("LACS のログインが切れています");
+            var onLacs = target.Host.Equals(NagasakiUniversity.LacsHost, StringComparison.OrdinalIgnoreCase);
+            if (!onLacs && !target.Host.EndsWith(".blackboard.com", StringComparison.OrdinalIgnoreCase))
+                throw new LacsApiException(0, $"ファイルの置き場がいつもと違うので受け取りませんでした（{target.Host}）");
+            // LACS のログインの Cookie は LACS にだけ送る
+            using var request = new HttpRequestMessage(HttpMethod.Get, target);
+            using var response = await (onLacs ? _http : plain).SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+            if ((int)response.StatusCode is >= 300 and < 400 && response.Headers.Location is { } next)
+            {
+                target = new Uri(target, next);
+                continue;
+            }
+            if (!response.IsSuccessStatusCode)
+                throw new LacsApiException((int)response.StatusCode, file.Name);
+            if (response.Content.Headers.ContentType?.MediaType == "text/html"
+                && !file.Name.EndsWith(".htm", StringComparison.OrdinalIgnoreCase)
+                && !file.Name.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
+                throw new LacsApiException(0, $"{file.Name} はファイルではなく LACS のページでした");
+
+            var size = response.Content.Headers.ContentLength;
+            if (File.Exists(path) && size is { } length && new FileInfo(path).Length == length)
+                return false;
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var part = path + ".part";
+            await using (var output = File.Create(part))
+                await response.Content.CopyToAsync(output);
+            if (File.Exists(path) && SameFile(part, path))
+            {
+                File.Delete(part);
+                return false;
+            }
+            File.Move(part, FreePath(path));
+            return true;
+        }
+        throw new LacsApiException(0, "転送が多すぎて受け取れませんでした");
+    }
+
+    private static bool SameFile(string a, string b)
+    {
+        if (new FileInfo(a).Length != new FileInfo(b).Length)
+            return false;
+        return File.ReadAllBytes(a).AsSpan().SequenceEqual(File.ReadAllBytes(b));
+    }
+
+    /// <summary>そのファイル名が使われていれば「名前 (2).pdf」のようにする。</summary>
+    public static string FreePath(string path)
+    {
+        if (!File.Exists(path))
+            return path;
+        var dir = Path.GetDirectoryName(path)!;
+        var stem = Path.GetFileNameWithoutExtension(path);
+        var ext = Path.GetExtension(path);
+        for (var i = 2; ; i++)
+        {
+            var candidate = Path.Combine(dir, $"{stem} ({i}){ext}");
+            if (!File.Exists(candidate))
+                return candidate;
+        }
+    }
+
+    /// <summary>Windows で使えるファイル名・フォルダ名にする（長すぎる名前は縮める）。</summary>
+    public static string SafeName(string text)
+    {
+        text = Regex.Replace(text, @"[<>:""/\\|?*\x00-\x1f]", "_").Trim(' ', '.', '●');
+        if (text.Length > 60)
+        {
+            var ext = Path.GetExtension(text);
+            text = ext.Length is > 0 and <= 6 ? text[..(60 - ext.Length - 1)] + "…" + ext : text[..59] + "…";
+        }
+        return text == "" ? "_" : text;
+    }
+
+    [GeneratedRegex(@"<a\b[^>]*?href=""([^""]*/bbcswebdav/[^""]*)""[^>]*>",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex EmbeddedLink();
+
+    [GeneratedRegex(@"data-bbfile=""([^""]*)""", RegexOptions.IgnoreCase)]
+    private static partial Regex BbFile();
+
+    [GeneratedRegex(@"/xid-([0-9_]+)")]
+    private static partial Regex Xid();
+
+    [GeneratedRegex(@"テスト|クイズ|試験|理解度|確認問題|\b(quiz|exam|test)\b",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex QuizName();
 
     /// <summary>
     /// 授業の資料（ファイル）1 つの、中身そのもののアドレス。ブラウザで開くと、LACS の画面を通さずに
@@ -134,9 +390,10 @@ public sealed class LacsClient : IDisposable
             : $"https://{NagasakiUniversity.LacsHost}/ultra/courses/{courseId}/assessment/{contentId}/overview?courseId={courseId}";
     }
 
-    private async Task<List<LacsCourse>> ReadCourseListAsync(string userId)
+    private async Task<List<LacsCourse>> ReadCourseListAsync(string userId, bool withTerms = false)
     {
         var courses = new List<LacsCourse>();
+        var termOf = new Dictionary<string, string>();
         foreach (var membership in await GetAllAsync($"{Api}/v1/users/{userId}/courses?expand=course&limit=100"))
         {
             if (!membership.TryGetProperty("course", out var course))
@@ -146,8 +403,10 @@ public sealed class LacsClient : IDisposable
                 && Str(availability, "available") == "No")
                 continue;
             courses.Add(new LacsCourse(Str(course, "id"), Str(course, "courseId"), Str(course, "name").Trim()));
+            if (Str(course, "termId") is { Length: > 0 } termId)
+                termOf[Str(course, "id")] = termId;
         }
-        return courses;
+        return withTerms ? await WithTermsAsync(courses, termOf) : courses;
     }
 
     /// <summary>
@@ -353,7 +612,8 @@ public sealed class LacsClient : IDisposable
     {
         using var response = await _http.GetAsync(url);
         var type = response.Content.Headers.ContentType?.MediaType ?? "";
-        if (url.EndsWith("/users/me", StringComparison.Ordinal))
+        // ログインできているときは何度も読むので、記録はうまくいかなかったときだけ
+        if (url.EndsWith("/users/me", StringComparison.Ordinal) && !response.IsSuccessStatusCode)
             NagasakiLog.Write($"LACS: users/me → {(int)response.StatusCode} {type}"
                               + (response.Headers.Location is { } to ? $"（転送先 {NagasakiLog.Where(to.IsAbsoluteUri ? to : null)}）" : ""));
         // ログインが切れていると、401 / 403 か、ログイン画面への転送か、JSON でない（ログイン画面の）ページが返る

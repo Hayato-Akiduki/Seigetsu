@@ -92,6 +92,9 @@ public partial class MainWindow : FluentWindow
             _pages[item.Key] = page;
         }
         PageHost.Content = page;
+        // ページによって余白が違う（LACS は小さい）。全画面のあいだは、全画面の余白のまま
+        if (!_immersive)
+            ApplyPageMargin();
     }
 
     // ---- 左メニューの開閉 -----------------------------------------------
@@ -127,8 +130,17 @@ public partial class MainWindow : FluentWindow
         ApplySidebar(narrow || App.Database.GetSetting(SettingKeys.SidebarCollapsed, "0") == "1");
     }
 
-    private void ApplyPageMargin() =>
-        PageHost.Margin = _narrow ? new Thickness(20, 44, 20, 16) : new Thickness(36, 48, 36, 28);
+    private void ApplyPageMargin()
+    {
+        // LACS のページは中身を広く見せたいので、上はタイトルバー（× ボタンなど）の高さだけ、左右と下も小さく空ける
+        if (PageHost.Content is LacsPage)
+            PageHost.Margin = _narrow ? new Thickness(10, TitleBarSpace, 10, 10) : new Thickness(16, TitleBarSpace, 16, 12);
+        else
+            PageHost.Margin = _narrow ? new Thickness(20, 44, 20, 16) : new Thickness(44, 52, 44, 32);
+    }
+
+    // タイトルバーに重なると、そこにあるボタンが押せなくなる（つかんで窓を動かす所になる）ので、その高さ＋少しは空ける
+    private double TitleBarSpace => (MainTitleBar.ActualHeight > 0 ? MainTitleBar.ActualHeight : 32) + 2;
 
     // ---- 全画面（LACS のページで PDF などを大きく見るとき） ----------------
     private bool _immersive;
@@ -149,7 +161,7 @@ public partial class MainWindow : FluentWindow
             SidebarPanel.Visibility = Visibility.Collapsed;
             SidebarColumn.Width = new GridLength(0);
             // 上は窓の × ボタンなどの分だけ空ける
-            PageHost.Margin = new Thickness(12, 40, 12, 12);
+            PageHost.Margin = new Thickness(8, TitleBarSpace, 8, 8);
             WindowState = WindowState.Maximized;
         }
         else

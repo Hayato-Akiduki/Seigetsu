@@ -10,52 +10,57 @@
             </ResourceDictionary.MergedDictionaries>
 
             <!-- 左メニューの色。外観に合わせて ThemeService が差し替える -->
-            <SolidColorBrush x:Key="SidebarBrush" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="SidebarLineBrush" Color="#DDE5F2" />
-            <SolidColorBrush x:Key="SidebarTextBrush" Color="#33415C" />
-            <SolidColorBrush x:Key="SidebarMutedBrush" Color="#5B6B86" />
-            <SolidColorBrush x:Key="SidebarStrongBrush" Color="#1D4ED8" />
-            <SolidColorBrush x:Key="SidebarActiveBrush" Color="#E6EEFD" />
-            <SolidColorBrush x:Key="SidebarHoverBrush" Color="#F1F5FC" />
-            <SolidColorBrush x:Key="MoonBrush" Color="#2563EB" />
+            <SolidColorBrush x:Key="SidebarBrush" Color="#F5F6F8" />
+            <SolidColorBrush x:Key="SidebarLineBrush" Color="#F5F6F8" />
+            <SolidColorBrush x:Key="SidebarTextBrush" Color="#3C4150" />
+            <SolidColorBrush x:Key="SidebarMutedBrush" Color="#8A90A0" />
+            <SolidColorBrush x:Key="SidebarStrongBrush" Color="#17191F" />
+            <SolidColorBrush x:Key="SidebarActiveBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="SidebarHoverBrush" Color="#ECEEF2" />
+            <SolidColorBrush x:Key="MoonBrush" Color="#3451D1" />
 
             <!-- 外観で変わる色。ThemeService が明るい／暗いに合わせて差し替える -->
-            <SolidColorBrush x:Key="BgBrush" Color="#F3F6FC" />
+            <SolidColorBrush x:Key="BgBrush" Color="#F5F6F8" />
             <SolidColorBrush x:Key="CardBrush" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="LineBrush" Color="#DDE5F2" />
-            <SolidColorBrush x:Key="TextBrush" Color="#14213D" />
-            <SolidColorBrush x:Key="MutedBrush" Color="#5B6B86" />
-            <SolidColorBrush x:Key="AccentBrush" Color="#2563EB" />
-            <SolidColorBrush x:Key="SubtleBrush" Color="#EAF1FD" />
-            <SolidColorBrush x:Key="DangerBrush" Color="#C94A4A" />
+            <SolidColorBrush x:Key="LineBrush" Color="#ECEEF1" />
+            <SolidColorBrush x:Key="TextBrush" Color="#17191F" />
+            <SolidColorBrush x:Key="MutedBrush" Color="#6A7080" />
+            <SolidColorBrush x:Key="AccentBrush" Color="#3451D1" />
+            <SolidColorBrush x:Key="SubtleBrush" Color="#EEF0F4" />
+            <SolidColorBrush x:Key="DangerBrush" Color="#D14343" />
             <SolidColorBrush x:Key="WarningBrush" Color="#B7791F" />
             <SolidColorBrush x:Key="SuccessBrush" Color="#2E8B62" />
             <SolidColorBrush x:Key="SegSelectedBrush" Color="#FFFFFF" />
             <SolidColorBrush x:Key="OnAccentBrush" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="ChartBarBrush" Color="#2563EB" />
+            <SolidColorBrush x:Key="ChartBarBrush" Color="#3451D1" />
 
             <FontFamily x:Key="AppFont">Yu Gothic UI, Meiryo UI, Segoe UI</FontFamily>
 
-            <!-- 白いカード -->
+            <!-- カード。線はごくうすくして、うすい影で背景から少し浮かせる -->
+            <DropShadowEffect x:Key="CardShadow" BlurRadius="22" ShadowDepth="2" Direction="270"
+                              Opacity="0.06" Color="#000000" RenderingBias="Performance" />
             <Style x:Key="Card" TargetType="Border">
                 <Setter Property="Background" Value="{DynamicResource CardBrush}" />
                 <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="CornerRadius" Value="14" />
-                <Setter Property="Padding" Value="20" />
+                <Setter Property="CornerRadius" Value="16" />
+                <Setter Property="Padding" Value="22" />
+                <Setter Property="Effect" Value="{StaticResource CardShadow}" />
             </Style>
 
+            <!-- 画面の見出し。太すぎない文字で、大きめに -->
             <Style x:Key="PageTitle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="26" />
-                <Setter Property="FontWeight" Value="Bold" />
-                <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-            </Style>
-
-            <Style x:Key="CardTitle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="15" />
+                <Setter Property="FontSize" Value="28" />
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-                <Setter Property="Margin" Value="0,0,0,10" />
+            </Style>
+
+            <!-- カードの見出し。小さく控えめにして、中身を目立たせる -->
+            <Style x:Key="CardTitle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+                <Setter Property="Margin" Value="0,0,0,12" />
             </Style>
 
             <Style x:Key="Muted" TargetType="TextBlock">
@@ -88,7 +93,7 @@
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="ListBox">
-                            <Border Background="{TemplateBinding Background}" CornerRadius="10"
+                            <Border Background="{TemplateBinding Background}" CornerRadius="12"
                                     Padding="{TemplateBinding Padding}">
                                 <ItemsPresenter />
                             </Border>
@@ -105,7 +110,7 @@
                             <Setter Property="Template">
                                 <Setter.Value>
                                     <ControlTemplate TargetType="ListBoxItem">
-                                        <Border x:Name="Bd" Background="Transparent" CornerRadius="8" Padding="14,7">
+                                        <Border x:Name="Bd" Background="Transparent" CornerRadius="9" Padding="16,7">
                                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                                         </Border>
                                         <ControlTemplate.Triggers>
