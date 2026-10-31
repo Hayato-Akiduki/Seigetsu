@@ -488,7 +488,17 @@ public sealed partial class LacsClient : IDisposable
         if (html == "")
             return "";
         var options = RegexOptions.IgnoreCase;
-        var text = Regex.Replace(html, @"<\s*(br|/p|/div|/li|/h\d|/tr)\b[^>]*>", "\n", options);
+        // リンクは、文字とアドレスが違えば「文字（アドレス）」にしてアドレスを残す（霽月の本文で押せるリンクにするため）
+        var text = Regex.Replace(html, @"<a\b[^>]*?\bhref\s*=\s*[""']([^""']+)[""'][^>]*>(.*?)</a\s*>", m =>
+        {
+            var href = WebUtility.HtmlDecode(m.Groups[1].Value).Trim();
+            var label = WebUtility.HtmlDecode(Regex.Replace(m.Groups[2].Value, @"<[^>]+>", "")).Trim();
+            if (!href.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                && !href.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                return m.Groups[2].Value;
+            return label == "" || label.Contains(href, StringComparison.OrdinalIgnoreCase) ? href : $"{label}（{href}）";
+        }, options | RegexOptions.Singleline);
+        text = Regex.Replace(text, @"<\s*(br|/p|/div|/li|/h\d|/tr)\b[^>]*>", "\n", options);
         text = Regex.Replace(text, @"<\s*li\b[^>]*>", "・", options);
         text = Regex.Replace(text, @"<[^>]+>", "");
         text = WebUtility.HtmlDecode(text).Replace('\u00a0', ' ');

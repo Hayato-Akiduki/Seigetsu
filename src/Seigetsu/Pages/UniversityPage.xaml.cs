@@ -355,7 +355,7 @@ public partial class UniversityPage : UserControl, IRefreshable
                 : $"LACS　{item.CourseName}　{item.Created.ToString("yyyy年M月d日（ddd） H:mm", Japanese)}";
         DetailSourceBar.Background = ThemeService.Brush(nuWeb ? "SuccessBrush" : "AccentBrush");
         DetailSourceBar.Visibility = item is null ? Visibility.Collapsed : Visibility.Visible;
-        DetailBody.Text = item is null ? "" : item.Body == "" ? "（本文はありません）" : item.Body;
+        LinkText.SetText(DetailBody, item is null ? "" : item.Body == "" ? "（本文はありません）" : item.Body);
         DetailBody.ScrollToHome();
         // LACS は霽月の LACS のページで、NU-Web はふだんのブラウザで開く
         OpenInLacsButton.Content = nuWeb ? "NU-Web でこのお知らせを開く" : "LACS でこの授業の連絡を開く";

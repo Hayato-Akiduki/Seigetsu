@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+             xmlns:local="clr-namespace:Seigetsu.Pages"
              Loaded="OnLoaded" PreviewKeyDown="OnPreviewKeyDown">
     <!--
       長崎大学モードのときだけ左メニューに出るページ。
@@ -19,6 +20,29 @@
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Bd" Background="{DynamicResource CardBrush}" CornerRadius="8" Padding="10,7"
                                 BorderBrush="{DynamicResource LineBrush}" BorderThickness="1">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- 連絡事項のカードの、題名と日付の部分（押すと本文を開く・閉じる）。枠はカードの側に付ける -->
+        <Style x:Key="InfoRowHeader" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="Transparent" CornerRadius="8" Padding="10,7"
+                                BorderBrush="Transparent" BorderThickness="1">
                             <ContentPresenter />
                         </Border>
                         <ControlTemplate.Triggers>
@@ -244,16 +268,19 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <!-- 連絡事項（自動更新で読んだもの）。押すと本文を開く・閉じる -->
+                        <!-- 連絡事項（自動更新で読んだもの）。題名を押すと本文を開く・閉じる。
+                             本文は、文字を選んでコピーでき、中の URL を押せるように、ボタンの外に出す（LinkText） -->
                         <TextBlock Text="連絡事項" Style="{StaticResource InfoHeading}" />
                         <TextBlock x:Name="NoAnnouncementText" Text="連絡事項はありません。" FontSize="12"
                                    Foreground="{DynamicResource MutedBrush}" Margin="2,0,0,4" />
                         <ItemsControl x:Name="AnnouncementList">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Button Style="{StaticResource InfoRow}" Click="OnAnnouncementClick"
-                                            ToolTip="押すと本文を開く・閉じる" AutomationProperties.Name="{Binding Title}">
+                                    <Border Background="{DynamicResource CardBrush}" CornerRadius="8" Margin="0,0,0,6"
+                                            BorderBrush="{DynamicResource LineBrush}" BorderThickness="1">
                                         <StackPanel>
+                                            <Button Style="{StaticResource InfoRowHeader}" Click="OnAnnouncementClick"
+                                                    ToolTip="押すと本文を開く・閉じる" AutomationProperties.Name="{Binding Title}">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
@@ -265,11 +292,15 @@
                                                 <TextBlock Grid.Column="1" Text="{Binding DateText}" FontSize="11" Margin="8,1,0,0"
                                                            Foreground="{DynamicResource MutedBrush}" />
                                             </Grid>
-                                            <TextBlock Text="{Binding Body}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"
-                                                       Foreground="{DynamicResource TextBrush}"
-                                                       Visibility="{Binding BodyVisibility}" />
+                                            </Button>
+                                            <RichTextBox IsReadOnly="True" IsDocumentEnabled="True" BorderThickness="0"
+                                                         Background="Transparent" Padding="0" Margin="10,0,10,8" FontSize="12"
+                                                         Foreground="{DynamicResource TextBrush}"
+                                                         HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Disabled"
+                                                         local:LinkText.Text="{Binding Body}" Visibility="{Binding BodyVisibility}"
+                                                         AutomationProperties.Name="連絡事項の本文" />
                                         </StackPanel>
-                                    </Button>
+                                    </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>

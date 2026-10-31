@@ -273,10 +273,12 @@
                         <TextBlock x:Name="DetailMeta" Style="{StaticResource Muted}" FontSize="12" Margin="0,4,0,10"
                                    TextWrapping="Wrap" />
                     </StackPanel>
-                    <!-- 本文は選んでコピーできるように、読むだけの入力欄で出す -->
-                    <TextBox x:Name="DetailBody" Grid.Row="1" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0"
-                             Background="Transparent" FontSize="14" VerticalScrollBarVisibility="Auto"
-                             Foreground="{DynamicResource TextBrush}" AutomationProperties.Name="連絡の本文" />
+                    <!-- 本文は、選んでコピーできて、中の URL を押せるように、読むだけの RichTextBox で出す
+                         （IsDocumentEnabled でリンクを押せるようにする。中身は LinkText で作る） -->
+                    <RichTextBox x:Name="DetailBody" Grid.Row="1" IsReadOnly="True" IsDocumentEnabled="True"
+                                 BorderThickness="0" Background="Transparent" Padding="0" FontSize="14"
+                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                 Foreground="{DynamicResource TextBrush}" AutomationProperties.Name="連絡の本文" />
                     <ui:Button x:Name="OpenInLacsButton" Grid.Row="2" Content="LACS でこの授業の連絡を開く"
                                Icon="{ui:SymbolIcon BookOpen24}" Padding="12,6" Margin="0,10,0,0"
                                Click="OnOpenInLacsClick" IsEnabled="False" />
