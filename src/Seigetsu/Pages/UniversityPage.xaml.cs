@@ -20,7 +20,14 @@ public sealed record UniversityAssignmentView(TaskItem Task, string DueText, Bru
 /// <summary>大学ページの LACS の連絡 1 行分。SpokenName は読み上げソフトに読ませる文。</summary>
 public sealed record UniversityAnnouncementView(
     AnnouncementItem Item, string DateText, Visibility UnseenVisibility, FontWeight TitleWeight, string SpokenName,
-    Brush SourceBrush, string SourceName);
+    Brush SourceBrush, string SourceName, string ChangeHint, Visibility ChangeHintVisibility);
+
+/// <summary>
+/// 「今日」の「授業の変更」の 1 行。NU-Web の休講補講（Change）か、授業の変更を知らせていそうな連絡（Announcement）。
+/// Tag は「休講」「教室変更」「オンライン」など。
+/// </summary>
+public sealed record UniversityChangeView(string Tag, Brush TagBrush, string Text, string SubText, Visibility SubVisibility,
+    AnnouncementItem? Announcement);
 
 /// <summary>長崎大学モードのときだけ左メニューに出るページ。今日の授業と、LACS の未提出の課題をまとめて見る。</summary>
 public partial class UniversityPage : UserControl, IRefreshable
@@ -100,6 +107,7 @@ public partial class UniversityPage : UserControl, IRefreshable
         SyncButton.IsEnabled = !App.Nagasaki.IsRunning;
         SyncButton.Content = App.Nagasaki.IsRunning ? "更新しています…" : "今すぐ更新";
         StatusText.Text = "前回の更新：" + NagasakiSync.LastStatus;
+        RefreshChanges();
         RefreshClasses();
         RefreshAssignments();
         ReloadAnnouncements();
@@ -134,10 +142,17 @@ public partial class UniversityPage : UserControl, IRefreshable
 
         var accent = ThemeService.Brush("AccentBrush");
         var line = ThemeService.Brush("LineBrush");
-        Classes.ItemsSource = classes.Select(s =>
+        // NU-Web の休講補講で、今日のこのコマに休講・教室変更があれば、印を付け、教室は新しいものにする
+        var todayChanges = App.Database.GetClassChanges(now.Date).Where(c => c.Date == now.Date).ToList();
+        Classes.ItemsSource = classes.Select(original =>
         {
-            var badge = s == current ? "授業中" : s == next ? "次" : "";
-            var done = Span(s) is { } t && t.End <= clock;
+            var s = original;
+            var change = todayChanges.FirstOrDefault(c => c.Period == s.Period && s.Codes.Split(',').Contains(c.Code));
+            if (change is { Kind: ClassChange.RoomChanged } && change.Room != "")
+                s = s with { Room = change.Room };
+            var badge = change is { Kind: ClassChange.Cancelled or ClassChange.RoomChanged } ? change.Kind
+                : original == current ? "授業中" : original == next ? "次" : "";
+            var done = change is { Kind: ClassChange.Cancelled } || (Span(s) is { } t && t.End <= clock);
             return new UniversityClassView(
                 s, $"{s.Period}限", NagasakiUniversity.TimeOf(s),
                 s.Detail == "" ? Visibility.Collapsed : Visibility.Visible,
@@ -148,6 +163,75 @@ public partial class UniversityPage : UserControl, IRefreshable
     }
 
     private static bool HasAnyTimetable() => App.Database.GetTimetable().Count > 0;
+
+    // 「授業の変更」に出す連絡は、この日数のあいだに出たものだけ
+    private const int ChangeNoticeDays = 14;
+
+    /// <summary>
+    /// 「今日」の上の「授業の変更」の欄。NU-Web の休講補講（今日から先）と、授業の変更を知らせていそうな最近の連絡を並べる。
+    /// どちらも無ければ欄ごと隠す。
+    /// </summary>
+    private void RefreshChanges()
+    {
+        var japanese = Japanese;
+        var rows = new List<UniversityChangeView>();
+        foreach (var c in App.Database.GetClassChanges(DateTime.Today))
+        {
+            var room = c.Kind != ClassChange.Cancelled && c.Room != "" ? $"教室：{c.Room}" : "";
+            rows.Add(new UniversityChangeView(c.Kind, ChangeBrush(c.Kind),
+                $"{c.Date.ToString("M/d（ddd）", japanese)} {c.Period}限　{c.Subject}",
+                room, room == "" ? Visibility.Collapsed : Visibility.Visible, null));
+        }
+        var since = DateTime.Today.AddDays(-ChangeNoticeDays);
+        foreach (var a in App.Database.GetAnnouncements().Where(a => a.Created >= since))
+        {
+            if (NagasakiUniversity.ClassChangeHint(a.Title, a.Body) is not { } hint)
+                continue;
+            var site = a.Source == AnnouncementSource.NuWeb ? "NU-Web" : "LACS";
+            rows.Add(new UniversityChangeView(hint, ChangeBrush(hint), a.Title,
+                $"{site}の連絡・{a.CourseName}・{a.Created.ToString("M/d（ddd）", japanese)}", Visibility.Visible, a));
+        }
+        ChangesPanel.Visibility = rows.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        ChangesList.ItemsSource = rows;
+    }
+
+    // 休講は赤、教室変更・オンライン・日時の変更は黄、補講は緑
+    private static Brush ChangeBrush(string kind) => ThemeService.Brush(kind switch
+    {
+        ClassChange.Cancelled => "DangerBrush",
+        ClassChange.Makeup => "SuccessBrush",
+        _ => "WarningBrush",
+    });
+
+    // 「授業の変更」の連絡を押したら、その連絡のタブに移って開く。NU-Web の休講補講なら、NU-Web の画面をブラウザで開く
+    private void OnChangeClick(object sender, System.Windows.Input.MouseButtonEventArgs e) => OpenChange(sender);
+
+    private void OnChangeKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key is System.Windows.Input.Key.Enter or System.Windows.Input.Key.Space)
+        {
+            OpenChange(sender);
+            e.Handled = true;
+        }
+    }
+
+    private void OpenChange(object sender)
+    {
+        if (((FrameworkElement)sender).DataContext is not UniversityChangeView view)
+            return;
+        if (view.Announcement is not { } a)
+        {
+            OpenInBrowser($"https://{NagasakiUniversity.NuWebHost}{NuWebClient.ClassChangePath}");
+            return;
+        }
+        ShowView(a.Source == AnnouncementSource.NuWeb ? AnnouncementSource.NuWeb : AnnouncementSource.Lacs);
+        if (AnnouncementList.ItemsSource is IEnumerable<UniversityAnnouncementView> shown
+            && shown.FirstOrDefault(v => v.Item.Id == a.Id) is { } row)
+        {
+            AnnouncementList.SelectedItem = row;
+            AnnouncementList.ScrollIntoView(row);
+        }
+    }
 
     /// <summary>「8:50～10:20」を (始まり, 終わり) にする。読めなければ null。</summary>
     private static (TimeSpan Start, TimeSpan End)? Span(ClassSlot slot)
@@ -318,14 +402,17 @@ public partial class UniversityPage : UserControl, IRefreshable
         // 出どころの色: LACS は青、NU-Web は緑（行の左端の線）
         var nuWeb = a.Source == AnnouncementSource.NuWeb;
         var source = nuWeb ? "NU-Web" : "LACS";
+        // 授業の変更（休講・教室変更など）を知らせていそうなら、題名の前に札を付ける
+        var hint = NagasakiUniversity.ClassChangeHint(a.Title, a.Body);
         var date = a.Created.Date == DateTime.Today ? a.Created.ToString("今日 H:mm")
             : a.Created.Year == DateTime.Today.Year ? a.Created.ToString("M/d（ddd）", Japanese)
             : a.Created.ToString("yyyy/M/d");
         return new UniversityAnnouncementView(a, date,
             a.Seen ? Visibility.Hidden : Visibility.Visible,
             a.Seen ? FontWeights.Normal : FontWeights.Bold,
-            (a.Seen ? "" : "未読 ") + $"{source} {date} {a.CourseName} {a.Title}",
-            ThemeService.Brush(nuWeb ? "SuccessBrush" : "AccentBrush"), source);
+            (a.Seen ? "" : "未読 ") + $"{source} {date} {a.CourseName} {hint} {a.Title}",
+            ThemeService.Brush(nuWeb ? "SuccessBrush" : "AccentBrush"), source,
+            hint ?? "", hint is null ? Visibility.Collapsed : Visibility.Visible);
     }
 
     private void OnAnnouncementSelected(object sender, SelectionChangedEventArgs e)

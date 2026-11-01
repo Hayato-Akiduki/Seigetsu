@@ -99,6 +99,65 @@ public sealed partial class NuWebClient : IDisposable
         return rooms;
     }
 
+    // ---- 休講補講 -------------------------------------------------------
+    /// <summary>休講補講参照の画面。ふだんのブラウザで開くときにも使う。</summary>
+    public const string ClassChangePath = Flows + "?_flowId=KHW0001100-flow";
+
+    /// <summary>
+    /// 休講補講参照（KHW0001100-flow）から、from 〜 to の休講・補講・教室変更を読む（履修している科目だけ）。
+    /// 一覧形式・「変更情報のみ表示」で頼み、各行の class（kyuko-kyuko 休講・kyuko-hoko 補講・kyuko-kyoshitsu 教室変更）で
+    /// 種類を見分ける。列は「日付・校時・時間割コード・科目・教員名・教室」。ログインが切れていたら NuWebLoginException。
+    /// </summary>
+    public async Task<IReadOnlyList<ClassChange>> ReadClassChangesAsync(DateTime from, DateTime to)
+    {
+        var (start, at) = await GetAsync(ClassChangePath);
+        if (!start.Contains("kyuko", StringComparison.Ordinal))
+        {
+            NagasakiLog.Write($"NU-Web: 休講補講の画面がありません（{NagasakiLog.Where(at)}）");
+            if (at.Host != NagasakiUniversity.NuWebHost || start.Contains("type=\"password\"", StringComparison.OrdinalIgnoreCase))
+                throw new NuWebLoginException();
+            throw new NuWebException("休講補講の画面が見つかりませんでした");
+        }
+        var query = $"{Flows}?_flowExecutionKey={FlowKey(start)}&dispType=list&dispData=chg"
+                    + $"&startDay_year={from.Year}&startDay_month={from.Month}&startDay_day={from.Day}"
+                    + $"&endDay_year={to.Year}&endDay_month={to.Month}&endDay_day={to.Day}"
+                    + "&rishuchuFlg=true&kyokanName=&shozokuCode=&_eventId_search=x";
+        var (page, _) = await GetAsync(query);
+
+        var changes = new List<ClassChange>();
+        foreach (Match row in ClassChangeRowRegex().Matches(page))
+        {
+            var cells = CellRegex().Matches(row.Groups["cells"].Value).Select(c => Line(c.Groups[1].Value)).ToList();
+            if (cells.Count < 6 || DateOfCell(cells[0], from, to) is not { } date
+                || PeriodRegex().Match(cells[1]) is not { Success: true } period)
+                continue;
+            var kind = row.Groups["kind"].Value switch
+            {
+                "kyuko" => ClassChange.Cancelled,
+                "hoko" => ClassChange.Makeup,
+                _ => ClassChange.RoomChanged,
+            };
+            changes.Add(new ClassChange(date, int.Parse(period.Groups[1].Value), cells[2], kind, cells[3], cells[^2], cells[^1]));
+        }
+        NagasakiLog.Write($"NU-Web: 休講・補講・教室変更 {changes.Count} 件（{from:M/d}〜{to:M/d}）");
+        return changes;
+    }
+
+    /// <summary>「11月2日(月)」を日付にする。年は from 〜 to の範囲に入る方を選ぶ（年をまたぐとき）。</summary>
+    private static DateTime? DateOfCell(string text, DateTime from, DateTime to)
+    {
+        if (MonthDayRegex().Match(text) is not { Success: true } m)
+            return null;
+        int month = int.Parse(m.Groups[1].Value), day = int.Parse(m.Groups[2].Value);
+        foreach (var year in new[] { from.Year, to.Year })
+        {
+            if (day <= DateTime.DaysInMonth(year, month) && new DateTime(year, month, day) is var date
+                && date >= from.Date.AddDays(-1) && date <= to.Date.AddDays(1))
+                return date;
+        }
+        return null;
+    }
+
     // ---- 掲示板 ---------------------------------------------------------
     /// <summary>掲示板の画面（自分宛ての掲示の一覧）。ふだんのブラウザで開くときにも使う。</summary>
     public const string NoticeBoardPath = Flows + "?_flowId=KJW0001100-flow";
@@ -281,6 +340,19 @@ public sealed partial class NuWebClient : IDisposable
     [GeneratedRegex(@"<!--.*?-->|<[^>]+>", RegexOptions.Singleline)]
     private static partial Regex TagRegex();
 
+    // 休講補講参照の一覧の 1 行（開講以外）。class で種類が分かる
+    [GeneratedRegex(@"<tr class=""kyuko-(?<kind>kyuko|hoko|kyoshitsu)""[^>]*>(?<cells>.*?)</tr>", RegexOptions.Singleline)]
+    private static partial Regex ClassChangeRowRegex();
+
+    [GeneratedRegex(@"<td[^>]*>(.*?)</td>", RegexOptions.Singleline)]
+    private static partial Regex CellRegex();
+
+    [GeneratedRegex(@"(\d{1,2})月(\d{1,2})日")]
+    private static partial Regex MonthDayRegex();
+
+    [GeneratedRegex(@"(\d+)校時")]
+    private static partial Regex PeriodRegex();
+
     // 掲示板の一覧の 1 行: 掲載日時・表題（本文へのリンク）・返信未読・ジャンル・所属・氏名
     [GeneratedRegex(@"<tr>\s*<td>\s*(?<date>\d{4}/\d{1,2}/\d{1,2} \d{1,2}:\d{2}:\d{2})\s*</td>\s*<td>\s*<a href=""(?<href>[^""]+)"">(?<title>.*?)</a>\s*</td>\s*<td[^>]*>.*?</td>\s*<td>(?<genre>.*?)</td>\s*<td>(?<dept>.*?)</td>\s*<td>(?<name>.*?)</td>", RegexOptions.Singleline)]
     private static partial Regex NoticeRowRegex();
@@ -299,6 +371,20 @@ public sealed partial class NuWebClient : IDisposable
 /// Sender は所属と氏名。Body は本文（開かなかったときは null）。
 /// </summary>
 public sealed record NuWebNotice(string Id, string Genre, string Sender, string Title, string? Body, DateTime Posted);
+
+/// <summary>
+/// NU-Web の休講補講参照の 1 件。Kind は Cancelled（休講）・Makeup（補講）・RoomChanged（教室変更）。
+/// Room は、教室変更・補講なら新しい教室。
+/// </summary>
+public sealed record ClassChange(DateTime Date, int Period, string Code, string Kind, string Subject, string Teacher, string Room)
+{
+    public const string Cancelled = "休講";
+    public const string Makeup = "補講";
+    public const string RoomChanged = "教室変更";
+
+    /// <summary>同じ変更を見分けるための値（日付・校時・時間割コード・種類）。</summary>
+    public string Key => $"{Date:yyyy-MM-dd}|{Period}|{Code}|{Kind}";
+}
 
 /// <summary>NU-Web が思ったページを返さなかった。</summary>
 public class NuWebException(string message) : Exception(message);

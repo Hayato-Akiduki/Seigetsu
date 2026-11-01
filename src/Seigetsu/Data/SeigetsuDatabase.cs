@@ -291,6 +291,18 @@ public sealed class SeigetsuDatabase
             Run("ALTER TABLE nu_lacs_announcements ADD COLUMN source TEXT NOT NULL DEFAULT 'lacs'");
         if (!announcementColumns.Contains("url"))
             Run("ALTER TABLE nu_lacs_announcements ADD COLUMN url TEXT NOT NULL DEFAULT ''");
+        // NU-Web の休講補講参照で読んだ、休講・補講・教室変更（自動更新のたびに、読んだ期間の分を入れ替える）
+        Run("""
+            CREATE TABLE IF NOT EXISTS nu_class_changes (
+                key TEXT PRIMARY KEY,
+                date TEXT NOT NULL,
+                period INTEGER NOT NULL,
+                code TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                teacher TEXT NOT NULL,
+                room TEXT NOT NULL)
+            """);
         Run("""
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -876,6 +888,46 @@ public sealed class SeigetsuDatabase
             added++;
         }
         return first ? 0 : added;
+    }
+
+    // ---- 休講・補講・教室変更（NU-Web の休講補講参照） ----------------
+    /// <summary>
+    /// from 〜 to の休講・補講・教室変更を、読んだものに入れ替える。前に無かった変更（新しく見つかったもの）を返す。
+    /// </summary>
+    public IReadOnlyList<Services.ClassChange> ReplaceClassChanges(DateTime from, DateTime to, IReadOnlyList<Services.ClassChange> changes)
+    {
+        var before = GetClassChanges(from.Date).Where(c => c.Date <= to.Date).Select(c => c.Key).ToHashSet();
+        Execute("DELETE FROM nu_class_changes WHERE date >= $from AND date <= $to",
+            ("$from", from.ToString("yyyy-MM-dd")), ("$to", to.ToString("yyyy-MM-dd")));
+        foreach (var c in changes)
+        {
+            Execute("""
+                INSERT OR REPLACE INTO nu_class_changes (key, date, period, code, kind, subject, teacher, room)
+                VALUES ($key, $date, $period, $code, $kind, $subject, $teacher, $room)
+                """, ("$key", c.Key), ("$date", c.Date.ToString("yyyy-MM-dd")), ("$period", c.Period), ("$code", c.Code),
+                ("$kind", c.Kind), ("$subject", c.Subject), ("$teacher", c.Teacher), ("$room", c.Room));
+        }
+        return changes.Where(c => !before.Contains(c.Key)).ToList();
+    }
+
+    /// <summary>from の日から先の休講・補講・教室変更を、日付と校時の順に。</summary>
+    public IReadOnlyList<Services.ClassChange> GetClassChanges(DateTime from)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT date, period, code, kind, subject, teacher, room FROM nu_class_changes
+            WHERE date >= $from ORDER BY date, period
+            """;
+        command.Parameters.AddWithValue("$from", from.ToString("yyyy-MM-dd"));
+        var list = new List<Services.ClassChange>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            list.Add(new Services.ClassChange(DateTime.Parse(reader.GetString(0)), reader.GetInt32(1), reader.GetString(2),
+                reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6)));
+        }
+        return list;
     }
 
     /// <summary>その出どころで残してあるお知らせの id（SaveAnnouncements に渡した形のまま）。</summary>

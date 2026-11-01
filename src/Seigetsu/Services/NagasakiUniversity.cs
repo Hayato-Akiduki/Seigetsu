@@ -69,6 +69,38 @@ public static partial class NagasakiUniversity
     private static string Str(JsonElement e, string name) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
 
+    // ---- 連絡から授業の変更を見つける ---------------------------------
+    // 長崎大学では、休講や教室の変更を NU-Web の休講補講に登録せず、LACS の連絡や掲示で知らせる先生が多い。
+    // そこで題名と本文の初めのほうから、授業の変更を知らせていそうな言葉を探す（見つけた種類の名前を返す）
+    private static readonly (string Label, Regex Pattern)[] ChangeHints =
+    [
+        ("休講", new Regex("休講")),
+        ("補講", new Regex("補講")),
+        ("教室変更", new Regex("(教室|講義室|会場|実施場所|場所)(の|を|が)?(変更|変わ)")),
+        // 「オンデマンドによる講義となります」のような、いつもオンラインの授業の毎回の連絡には付けない。
+        // 「オンラインで行います」「オンラインに変更」のように、その回だけ形が変わることを知らせる言い方だけ
+        ("オンライン", new Regex(@"(オンライン|遠隔|Teams|Zoom|ZOOM)(で|にて)(行|実施|開講)|(オンライン|遠隔)(授業|講義|形式)?に(変更|切り替|切替)")),
+        ("日時の変更", new Regex(@"(日程|時間|時限|開始時刻|曜日)(の|を|が)?変更|振替|振り替え|\d+\s*(限|時限)目?から(スタート|開始|始め)")),
+    ];
+
+    // 本文は初めのほうだけ見る（長い本文の途中の言葉で、関係のない連絡に印が付かないように）
+    private const int HintBodyLength = 400;
+
+    /// <summary>
+    /// 連絡が授業の変更（休講・補講・教室変更・オンライン・日時の変更）を知らせていそうなら、その種類の名前。
+    /// そうでなければ null。言葉で探すだけなので、外れることもある。
+    /// </summary>
+    public static string? ClassChangeHint(string title, string body)
+    {
+        var text = title + "\n" + (body.Length > HintBodyLength ? body[..HintBodyLength] : body);
+        foreach (var (label, pattern) in ChangeHints)
+        {
+            if (pattern.IsMatch(text))
+                return label;
+        }
+        return null;
+    }
+
     // ---- 時間割と LACS の授業を結びつける -------------------------------
     /// <summary>
     /// 時間割の授業名（例:「●A01線形代数学」）に合う LACS の授業を探す。

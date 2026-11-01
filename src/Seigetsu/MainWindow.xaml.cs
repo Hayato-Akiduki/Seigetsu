@@ -519,6 +519,16 @@ public partial class MainWindow : FluentWindow
     private void OnNagasakiSynced(NagasakiReport report, bool userAsked)
     {
         DataChanged();
+        // 休講・補講・教室変更（と、それを知らせていそうな新しい連絡）が見つかったら、Windows の通知でも知らせる
+        if (report.ChangeAlerts is { Count: > 0 } changes)
+        {
+            var lines = changes.Take(3).ToList();
+            if (changes.Count > 3)
+                lines.Add($"ほか {changes.Count - 3} 件（大学のページで見られます）");
+            _tray.Notify("霽月 - 授業の変更", string.Join("\n", lines));
+            Notify("授業の変更が見つかりました。\n" + string.Join("\n", lines), ControlAppearance.Caution, 10);
+            return;
+        }
         if (report.Error is { } error && userAsked)
             Notify($"大学の情報を更新できませんでした。\n{error}", ControlAppearance.Danger, 6);
         else if (report.NeedsLogin && _nagasaki is null && (userAsked || !_nagasakiLoginNotified))

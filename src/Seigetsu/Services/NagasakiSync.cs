@@ -14,7 +14,7 @@ namespace Seigetsu.Services;
 /// </summary>
 public sealed record NagasakiReport(
     bool NuWebNeedsLogin, bool LacsNeedsLogin, int Classes, int Assignments, int Added, string? Error,
-    string? LacsNote = null, int NewAnnouncements = 0)
+    string? LacsNote = null, int NewAnnouncements = 0, IReadOnlyList<string>? ChangeAlerts = null)
 {
     public bool NeedsLogin => NuWebNeedsLogin || LacsNeedsLogin;
 }
@@ -26,7 +26,7 @@ public sealed record NagasakiReport(
 /// - Cookie で読めないときだけ、見えないブラウザで長大ID のログインに入り直す（長大ID のログインが残っていれば、
 ///   パスワードなしで通る）。それでもだめなら「ログインが必要」と伝え、NagasakiWindow で本人にログインしてもらう
 /// - ログインを延ばすための読み込み（何もしないのに定期的に読むこと）はしない。大学のサイトに記録が残るため
-/// 霽月の起動（Windows の起動で自動で起動する）とスリープからの復帰の 30 秒後に更新し、そのあとは PC が動いている間、
+/// 霽月の起動（Windows の起動で自動で起動する）とスリープからの復帰（電源の知らせか、時計の止まり方で気づく）の 30 秒後に更新し、そのあとは PC が動いている間、
 /// 前の更新が終わってから 2〜3 時間のうちのランダムな時間ごとに更新する。どこで止まったかは NagasakiLog に書く。
 /// </summary>
 public sealed class NagasakiSync
@@ -41,12 +41,22 @@ public sealed class NagasakiSync
     // LACS の連絡事項は、この日数より前に出たものは読まない
     private const int AnnouncementDays = 60;
 
+    // NU-Web の休講補講参照は、今日からこの日数のあいだを読む
+    private const int ClassChangeDays = 28;
+
     // NU-Web の掲示の本文を、1 回の更新で開く数の上限（初めてのときに何百件も開かないように）
     private const int MaxNoticeBodies = 120;
     private const string UserAgent = "Seigetsu";
 
     private readonly DispatcherTimer _timer = new() { Interval = FirstDelay };
     private bool _started;
+
+    // スリープから戻ったことに気づくための時計。モダンスタンバイの PC では、Windows の電源の知らせ
+    // （PowerModeChanged）が来ないことがあるので、30 秒ごとに時刻を見て、前から 2 分以上たっていたら戻ったとみなす
+    private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan WakeGap = TimeSpan.FromMinutes(2);
+    private readonly DispatcherTimer _heartbeat = new() { Interval = HeartbeatInterval };
+    private DateTime _lastBeat = DateTime.Now;
     private Task<CoreWebView2Environment>? _environment;
     private HiddenPage? _page;
     private CookieContainer? _jar;
@@ -74,6 +84,9 @@ public sealed class NagasakiSync
         {
             // 1 回ごとに止め、更新が終わったら次の時間を決める（RunAsync の最後）
             _timer.Stop();
+            // スリープ中に予定の時刻を過ぎていたときは、戻ってすぐには読まない（ネットワークがまだつながっていないことがある）
+            if (CheckWake())
+                return;
             if (NagasakiUniversity.Enabled)
                 await SyncAsync(userAsked: false);
             else
@@ -81,6 +94,24 @@ public sealed class NagasakiSync
         };
         Schedule(FirstDelay);
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
+        _lastBeat = DateTime.Now;
+        _heartbeat.Tick += (_, _) => CheckWake();
+        _heartbeat.Start();
+    }
+
+    /// <summary>
+    /// 前に時刻を見たときから 2 分以上たっていたら、スリープから戻ったとみなし、30 秒後に更新する。戻ったとみなしたら true。
+    /// </summary>
+    private bool CheckWake()
+    {
+        var now = DateTime.Now;
+        var gap = now - _lastBeat;
+        _lastBeat = now;
+        if (gap < WakeGap)
+            return false;
+        NagasakiLog.Write($"スリープから戻りました（{gap.TotalMinutes:0} 分止まっていました。30 秒後に更新します）");
+        Schedule(FirstDelay);
+        return true;
     }
 
     /// <summary>アプリを終わるときに呼ぶ（SystemEvents は静的なイベントなので外しておく）。</summary>
@@ -88,6 +119,7 @@ public sealed class NagasakiSync
     {
         _started = false;
         _timer.Stop();
+        _heartbeat.Stop();
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
     }
 
@@ -107,6 +139,7 @@ public sealed class NagasakiSync
             dispatcher.BeginInvoke(() =>
             {
                 NagasakiLog.Write("スリープから戻りました（30 秒後に更新します）");
+                _lastBeat = DateTime.Now; // 時計の見張りの方で、もう一度「戻った」とみなさないように
                 Schedule(FirstDelay);
             });
     }
@@ -266,6 +299,30 @@ public sealed class NagasakiSync
             }
         }
 
+        // 新しく見つかった授業の変更（休講・補講・教室変更と、それを知らせていそうな新しい連絡）。最後にまとめて知らせる
+        var changeAlerts = new List<string>();
+
+        // ---- NU-Web の休講補講参照（今日から 4 週間。読めなくても、ほかの結果はそのまま） ----
+        if (nuWebOk)
+        {
+            try
+            {
+                var from = DateTime.Today;
+                var to = from.AddDays(ClassChangeDays - 1);
+                var found = await nuWeb.ReadClassChangesAsync(from, to);
+                foreach (var c in App.Database.ReplaceClassChanges(from, to, found))
+                    changeAlerts.Add(DescribeChange(c));
+            }
+            catch (NuWebLoginException)
+            {
+                NagasakiLog.Write("NU-Web: 休講補講を読む途中でログインが切れました");
+            }
+            catch (Exception changeError) when (changeError is NuWebException or HttpRequestException or TaskCanceledException)
+            {
+                NagasakiLog.Write($"NU-Web: 休講補講を読み込めませんでした（{changeError.Message}）");
+            }
+        }
+
         // ---- NU-Web の掲示（読めなくても、時間割や LACS の結果はそのまま） ----
         var newNotices = 0;
         if (nuWebOk)
@@ -281,6 +338,15 @@ public sealed class NagasakiSync
                 newNotices = App.Database.SaveAnnouncements(AnnouncementSource.NuWeb, notices
                     .Select(n => new AnnouncementInput(AnnouncementSource.NuWeb, n.Id, n.Sender, n.Genre, n.Title, n.Body,
                         n.Posted, url)));
+                // 初めて読み込んだとき（前に 1 件も無かったとき）は、前からある掲示なので知らせない
+                if (known.Count > 0)
+                {
+                    foreach (var n in notices.Where(n => n.Body is not null && !known.Contains(n.Id)))
+                    {
+                        if (NagasakiUniversity.ClassChangeHint(n.Title, n.Body!) is { } hint)
+                            changeAlerts.Add($"NU-Web の掲示「{n.Title}」（{hint}）");
+                    }
+                }
             }
             catch (NuWebLoginException)
             {
@@ -348,6 +414,15 @@ public sealed class NagasakiSync
             try
             {
                 var result = await lacs.ReadAnnouncementsAsync(DateTimeOffset.Now.AddDays(-AnnouncementDays));
+                var knownLacs = App.Database.AnnouncementIds(AnnouncementSource.Lacs);
+                if (knownLacs.Count > 0)
+                {
+                    foreach (var a in result.Announcements.Where(a => !knownLacs.Contains(a.Id)))
+                    {
+                        if (NagasakiUniversity.ClassChangeHint(a.Title, a.Body) is { } hint)
+                            changeAlerts.Add($"{a.CourseName}「{a.Title}」（{hint}）");
+                    }
+                }
                 newAnnouncements = App.Database.SaveAnnouncements(AnnouncementSource.Lacs, result.Announcements.Select(a =>
                     new AnnouncementInput(AnnouncementSource.Lacs, a.Id, a.CourseId, a.CourseName, a.Title, a.Body, a.Created,
                         $"https://{NagasakiUniversity.LacsHost}/ultra/courses/{a.CourseId}/announcements")));
@@ -364,8 +439,18 @@ public sealed class NagasakiSync
         // 新しくもらった Cookie も含めて残す。見えないブラウザは次の更新まで大学のページを開いたままにしない
         NagasakiSession.Save(jar);
         _page?.Clear();
+        if (changeAlerts.Count > 0)
+            NagasakiLog.Write($"授業の変更：新しく {changeAlerts.Count} 件");
         return new NagasakiReport(!nuWebOk, !lacsOk, classes, assignments, added, error, lacsNote,
-            newAnnouncements + newNotices);
+            newAnnouncements + newNotices, changeAlerts);
+    }
+
+    /// <summary>休講・補講・教室変更 1 件を、知らせる文にする。例:「11/6（金）1 限 線形代数学：休講」</summary>
+    public static string DescribeChange(ClassChange c)
+    {
+        var when = c.Date.ToString("M/d（ddd）", System.Globalization.CultureInfo.GetCultureInfo("ja-JP"));
+        var room = c.Kind != ClassChange.Cancelled && c.Room != "" ? $"（{c.Room}）" : "";
+        return $"{when} {c.Period} 限 {c.Subject}：{c.Kind}{room}";
     }
 
     /// <summary>

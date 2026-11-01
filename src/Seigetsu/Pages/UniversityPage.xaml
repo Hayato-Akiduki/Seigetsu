@@ -59,6 +59,39 @@
                 <TextBlock x:Name="ClassesSub" Grid.Row="1" Style="{StaticResource Muted}" FontSize="12" Margin="0,4,0,10" />
                 <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
                     <StackPanel>
+                        <!-- 授業の変更（NU-Web の休講補講と、休講・教室変更などを知らせていそうな最近の連絡）。無ければ隠す -->
+                        <Border x:Name="ChangesPanel" CornerRadius="10" Padding="12,10" Margin="0,0,4,12"
+                                BorderThickness="1" BorderBrush="{DynamicResource WarningBrush}" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="授業の変更" FontSize="14" FontWeight="Bold" Margin="0,0,0,6"
+                                           Foreground="{DynamicResource TextBrush}" />
+                                <ItemsControl x:Name="ChangesList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,3" Background="Transparent" Cursor="Hand" Focusable="True"
+                                                  ToolTip="押すと開きます" AutomationProperties.Name="{Binding Text}"
+                                                  MouseLeftButtonUp="OnChangeClick" KeyDown="OnChangeKeyDown">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Border CornerRadius="6" Padding="6,1" Margin="0,1,8,0" VerticalAlignment="Top"
+                                                        Background="{Binding TagBrush}">
+                                                    <TextBlock Text="{Binding Tag}" FontSize="11" FontWeight="Bold"
+                                                               Foreground="{DynamicResource OnAccentBrush}" />
+                                                </Border>
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="{Binding Text}" FontSize="13" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource TextBrush}" />
+                                                    <TextBlock Text="{Binding SubText}" FontSize="11" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource MutedBrush}" Visibility="{Binding SubVisibility}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
                         <TextBlock x:Name="NoClassesText" Style="{StaticResource Muted}" HorizontalAlignment="Center"
                                    TextAlignment="Center" TextWrapping="Wrap" Margin="0,40,0,0" Visibility="Collapsed" />
                         <ItemsControl x:Name="Classes">
@@ -247,9 +280,18 @@
                                     <TextBlock Grid.Column="3" Text="{Binding Item.CourseName}" FontSize="12" Margin="0,0,12,0"
                                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                                Style="{StaticResource RowText}" ToolTip="{Binding Item.CourseName}" />
-                                    <TextBlock Grid.Column="4" Text="{Binding Item.Title}" FontSize="14" VerticalAlignment="Center"
-                                               TextTrimming="CharacterEllipsis" FontWeight="{Binding TitleWeight}"
-                                               Style="{StaticResource RowTitle}" ToolTip="{Binding Item.Title}" />
+                                    <!-- 授業の変更を知らせていそうな連絡は、題名の前に札（休講・オンラインなど）を付ける -->
+                                    <DockPanel Grid.Column="4" VerticalAlignment="Center">
+                                        <Border DockPanel.Dock="Left" CornerRadius="6" Padding="5,0" Margin="0,0,6,0"
+                                                VerticalAlignment="Center" Background="{DynamicResource WarningBrush}"
+                                                Visibility="{Binding ChangeHintVisibility}">
+                                            <TextBlock Text="{Binding ChangeHint}" FontSize="10" FontWeight="Bold"
+                                                       Foreground="{DynamicResource OnAccentBrush}" />
+                                        </Border>
+                                        <TextBlock Text="{Binding Item.Title}" FontSize="14" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" FontWeight="{Binding TitleWeight}"
+                                                   Style="{StaticResource RowTitle}" ToolTip="{Binding Item.Title}" />
+                                    </DockPanel>
                                 </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
