@@ -42,6 +42,7 @@ public static class SettingKeys
     public const string AutoStartDefaulted = "autostart_defaulted"; // 自動起動をはじめにオンにしたか（一度だけ。オフにしたら戻さない）
     public const string Volume = "music_volume";
     public const string SidebarCollapsed = "sidebar_collapsed"; // 1 / 0（v7 だけの設定）
+    public const string FocusLock = "focus_lock";               // 1 / 0 集中タイマーのあいだ全画面でロックするか（v7 だけの設定）
     public const string DueNotify = "due_notify";               // 1 / 0 締切の通知（v7 だけの設定）
     public const string DueNotifiedOn = "due_notified_on";      // 締切を最後に知らせた日（yyyy-MM-dd）
     public const string NagasakiMode = "nagasaki_mode";         // 1 / 0 長崎大学モード（v7 だけの設定）

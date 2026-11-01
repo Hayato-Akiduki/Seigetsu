@@ -58,6 +58,11 @@
                                Margin="6,0" Click="OnSkipClick" />
                 </StackPanel>
 
+                <CheckBox x:Name="LockCheck" HorizontalAlignment="Center" Margin="0,18,0,0"
+                          Content="動いているあいだは全画面でロックする（集中ロック）"
+                          ToolTip="ストップウォッチとポモドーロの作業時間のあいだ、霽月の画面ですべてのモニターを覆い、Alt+Tab や Windows キーを使えなくします。ロック画面のボタンを 3 秒長押しすると一時停止して解けます。"
+                          Click="OnLockClick" />
+
                 <TextBlock x:Name="HintText" Style="{StaticResource Muted}" FontSize="12" HorizontalAlignment="Center"
                            TextAlignment="Center" TextWrapping="Wrap" Margin="0,20,0,0" />
 

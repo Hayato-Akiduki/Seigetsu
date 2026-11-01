@@ -49,6 +49,7 @@ public partial class TimerPage : UserControl, IRefreshable, ITimerAware
         ModeList.SelectionChanged += OnModeChanged;
 
         var db = App.Database;
+        LockCheck.IsChecked = FocusLock.Enabled;
         ShowLength();
         TodayText.Text = Format.Duration(db.WorkSecondsToday());
         WeekText.Text = Format.Duration(db.WorkSecondsSince(DateTime.Today.AddDays(-6).ToString("yyyy-MM-dd")));
@@ -83,6 +84,8 @@ public partial class TimerPage : UserControl, IRefreshable, ITimerAware
             SkipButton.IsEnabled = false;
         }
 
+        // タイマー（料理などにも使う）ではロックしないので、選べないようにする
+        LockCheck.IsEnabled = !Timer.IsCountdown;
         CountdownPanel.Visibility = Timer.IsCountdown ? Visibility.Visible : Visibility.Collapsed;
         // 動いている間に長さを変えると最初からになってしまうので、止めているときだけ変えられる
         CountdownPanel.IsEnabled = !Timer.Running;
@@ -100,6 +103,13 @@ public partial class TimerPage : UserControl, IRefreshable, ITimerAware
     private void OnStartClick(object sender, RoutedEventArgs e)
     {
         Timer.Toggle();
+        Main.TimerChanged();
+    }
+
+    private void OnLockClick(object sender, RoutedEventArgs e)
+    {
+        FocusLock.Enabled = LockCheck.IsChecked == true;
+        // 動いている途中でオンにしたら、すぐにロックする
         Main.TimerChanged();
     }
 

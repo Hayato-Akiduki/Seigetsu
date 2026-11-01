@@ -49,6 +49,9 @@ public partial class MainWindow : FluentWindow
 
     private bool? _miniRunning;
 
+    // 集中ロック（タイマーが動いているあいだ、全画面で覆ってほかのアプリに移れなくする）
+    private readonly FocusLock _focusLock = new();
+
     private readonly TrayIcon _tray;
     private bool _quitting;        // true のときは × でもタスクトレイに隠さず、本当に終わる
     private bool _trayHintShown;   // 「タスクトレイで動いています」は最初の 1 回だけ
@@ -66,6 +69,7 @@ public partial class MainWindow : FluentWindow
         ApplySidebar(App.Database.GetSetting(SettingKeys.SidebarCollapsed, "0") == "1");
         ApplyBackground();
 
+        _focusLock.StopRequested += OnFocusLockStop;
         _tick.Tick += (_, _) => OnTick();
         _daily.Tick += (_, _) =>
         {
@@ -579,6 +583,7 @@ public partial class MainWindow : FluentWindow
     /// <summary>タイマーを操作したあとに呼ぶ。recorded は作業記録が増えたかもしれないとき。</summary>
     public void TimerChanged(bool recorded = false)
     {
+        _focusLock.Update(App.Timer, this);
         UpdateMiniTimer();
         if (recorded)
             DataChanged();
@@ -589,6 +594,8 @@ public partial class MainWindow : FluentWindow
     private void OnTick()
     {
         var finished = App.Timer.Tick();
+        // ポモドーロの作業が終わって休憩に入ったら、通知より先にロックを解く
+        _focusLock.Update(App.Timer, this);
         if (finished is not null)
             OnPhaseFinished(finished.Value);
         UpdateMiniTimer();
@@ -614,6 +621,14 @@ public partial class MainWindow : FluentWindow
                 FlashTaskbar();
         }
         DataChanged();
+    }
+
+    // ロック画面の「長押しで一時停止」
+    private void OnFocusLockStop()
+    {
+        App.Timer.Pause();
+        TimerChanged();
+        Notify("タイマーを一時停止して、集中ロックを解きました。", ControlAppearance.Info);
     }
 
     private void UpdateMiniTimer()
@@ -699,6 +714,7 @@ public partial class MainWindow : FluentWindow
         foreach (var page in _pages.Values.OfType<ISavable>())
             page.Flush();
         App.Timer.Reset();
+        _focusLock.Release(this);
         App.DesktopStickies.CloseAll(); // 出していた付箋は、次に起動したときにまた出る
         _tick.Stop();
         _daily.Stop();
