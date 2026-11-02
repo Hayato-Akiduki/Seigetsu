@@ -13,6 +13,25 @@ using Wpf.Ui.Controls;
 namespace Seigetsu.Pages;
 
 /// <summary>左の一覧の授業 1 つ。Sub は授業の番号と学期。</summary>
+/// <summary>資料の 1 回分のまとまり（右の「資料」の欄の 1 枚）。</summary>
+public sealed record MaterialGroupView(LacsCourse Course, LacsMaterialGroup Group)
+{
+    public string Title => Group.Title;
+    public string CountText => $"ファイル {Group.Files.Count} 件";
+    public string SaveName => $"{Group.Title}のファイルをまとめて保存";
+    public IReadOnlyList<MaterialFileView> Files => Group.Files.Select(f => new MaterialFileView(Course, f)).ToList();
+}
+
+/// <summary>資料のファイル 1 つ（回のまとまりの中の 1 行）。</summary>
+public sealed record MaterialFileView(LacsCourse Course, LacsFile File)
+{
+    // LACS の画面に出ている名前を出し、保存するファイル名が違えば下に小さく出す
+    public string Name => File.Title != "" ? File.Title : File.Name;
+    public string FileName => File.Title != "" && File.Title != File.Name ? $"ファイル名：{File.Name}" : "";
+    public Visibility FileNameVisibility => FileName == "" ? Visibility.Collapsed : Visibility.Visible;
+    public string SaveName => $"{Name} を保存";
+}
+
 public sealed record CourseRow(LacsCourse Course, bool InTimetable)
 {
     public string Name => Course.Name;
@@ -385,6 +404,7 @@ public partial class LacsPage : UserControl, IDisposable
         {
             _openAnnouncements.Clear();
             MaterialsText.Text = "";
+            MaterialGroups.ItemsSource = null;
             OpenMaterialsButton.Visibility = Directory.Exists(MaterialsFolder(row.Course)) ? Visibility.Visible : Visibility.Collapsed;
         }
         _shownCourse = row;
@@ -505,10 +525,8 @@ public partial class LacsPage : UserControl, IDisposable
         if (_core is null || _shownCourse is not { } row || _savingMaterials)
             return;
         _savingMaterials = true;
-        SaveMaterialsButton.IsEnabled = false;
+        SetMaterialButtons(false);
         MaterialsText.Text = "資料を探しています…";
-        var root = MaterialsFolder(row.Course);
-        int saved = 0, skipped = 0, failed = 0;
         try
         {
             using var client = await BrowserClientAsync();
@@ -518,35 +536,7 @@ public partial class LacsPage : UserControl, IDisposable
                 MaterialsText.Text = "この授業には、保存できるファイルが見つかりませんでした。";
                 return;
             }
-            for (var i = 0; i < files.Count; i++)
-            {
-                var file = files[i];
-                MaterialsText.Text = $"保存しています…（{i + 1} / {files.Count}）{file.Name}";
-                var folder = Path.Combine([root, .. file.Folder.Split('/', StringSplitOptions.RemoveEmptyEntries)
-                    .Select(LacsClient.SafeName)]);
-                try
-                {
-                    if (await client.DownloadAsync(file, Path.Combine(folder, LacsClient.SafeName(file.Name))))
-                        saved++;
-                    else
-                        skipped++;
-                }
-                catch (LacsLoginException)
-                {
-                    throw;
-                }
-                catch (Exception error) when (error is LacsApiException or System.Net.Http.HttpRequestException
-                                                  or TaskCanceledException or IOException or UnauthorizedAccessException)
-                {
-                    failed++;
-                    NagasakiLog.Write($"LACS: 資料を保存できませんでした（{error.Message}）");
-                }
-            }
-            MaterialsText.Text = $"新しく {saved} 件保存しました" + (skipped > 0 ? $"（保存済み {skipped} 件）" : "")
-                                 + (failed > 0 ? $"。{failed} 件は保存できませんでした" : "") + "。";
-            OpenMaterialsButton.Visibility = Directory.Exists(root) ? Visibility.Visible : Visibility.Collapsed;
-            if (saved > 0)
-                Main.Notify($"「{row.Course.Name}」の資料を {saved} 件保存しました。");
+            await SaveFilesAsync(client, row.Course, files);
         }
         catch (LacsLoginException)
         {
@@ -560,7 +550,127 @@ public partial class LacsPage : UserControl, IDisposable
         finally
         {
             _savingMaterials = false;
-            SaveMaterialsButton.IsEnabled = true;
+            SetMaterialButtons(true);
+        }
+    }
+
+    /// <summary>
+    /// ファイルをダウンロード\LACS\授業名 に、LACS の中のフォルダの形のまま保存する（保存済みのものは飛ばす）。
+    /// 結果は MaterialsText に出す。ログインが切れていたら LacsLoginException。
+    /// </summary>
+    private async Task SaveFilesAsync(LacsClient client, LacsCourse course, IReadOnlyList<LacsFile> files)
+    {
+        var root = MaterialsFolder(course);
+        int saved = 0, skipped = 0, failed = 0;
+        for (var i = 0; i < files.Count; i++)
+        {
+            var file = files[i];
+            MaterialsText.Text = $"保存しています…（{i + 1} / {files.Count}）{file.Name}";
+            var folder = Path.Combine([root, .. file.Folder.Split('/', StringSplitOptions.RemoveEmptyEntries)
+                .Select(LacsClient.SafeName)]);
+            try
+            {
+                if (await client.DownloadAsync(file, Path.Combine(folder, LacsClient.SafeName(file.Name))))
+                    saved++;
+                else
+                    skipped++;
+            }
+            catch (LacsLoginException)
+            {
+                throw;
+            }
+            catch (Exception error) when (error is LacsApiException or System.Net.Http.HttpRequestException
+                                              or TaskCanceledException or IOException or UnauthorizedAccessException)
+            {
+                failed++;
+                NagasakiLog.Write($"LACS: 資料を保存できませんでした（{error.Message}）");
+            }
+        }
+        MaterialsText.Text = $"新しく {saved} 件保存しました" + (skipped > 0 ? $"（保存済み {skipped} 件）" : "")
+                             + (failed > 0 ? $"。{failed} 件は保存できませんでした" : "") + "。";
+        OpenMaterialsButton.Visibility = Directory.Exists(root) ? Visibility.Visible : Visibility.Collapsed;
+        if (saved > 0)
+            Main.Notify($"「{course.Name}」の資料を {saved} 件保存しました。");
+    }
+
+    private void SetMaterialButtons(bool enabled)
+    {
+        SaveMaterialsButton.IsEnabled = enabled;
+        ListMaterialsButton.IsEnabled = enabled;
+        MaterialGroups.IsEnabled = enabled;
+    }
+
+    // ---- 回ごとの資料 ---------------------------------------------------
+    /// <summary>
+    /// この授業のファイルを探して、授業の回ごとにまとめて並べる（LacsMaterials.GroupBySession）。
+    /// 押したときだけ LACS を読む。並べたあと、回ごと・ファイルごとに保存できる。
+    /// </summary>
+    private async void OnListMaterialsClick(object sender, RoutedEventArgs e)
+    {
+        if (_core is null || _shownCourse is not { } row || _savingMaterials)
+            return;
+        _savingMaterials = true;
+        SetMaterialButtons(false);
+        MaterialsText.Text = "資料を探しています…";
+        try
+        {
+            using var client = await BrowserClientAsync();
+            var files = await client.ReadMaterialsAsync(row.Course.Id);
+            if (_shownCourse?.Course.Id != row.Course.Id)
+                return; // 探しているあいだに、ほかの授業に移った
+            var groups = LacsMaterials.GroupBySession(files);
+            MaterialGroups.ItemsSource = groups.Select(g => new MaterialGroupView(row.Course, g)).ToList();
+            MaterialsText.Text = files.Count == 0 ? "この授業には、保存できるファイルが見つかりませんでした。"
+                : $"{files.Count} 件のファイルを、{groups.Count} のまとまりに分けました。";
+        }
+        catch (LacsLoginException)
+        {
+            MaterialsText.Text = "LACS のログインが切れています。上の ⟳ で読み込み直すと、ログインの画面になります。";
+        }
+        catch (Exception error) when (error is LacsApiException or System.Net.Http.HttpRequestException
+                                          or System.Text.Json.JsonException or TaskCanceledException)
+        {
+            MaterialsText.Text = "資料を探せませんでした（" + error.Message + "）。";
+        }
+        finally
+        {
+            _savingMaterials = false;
+            SetMaterialButtons(true);
+        }
+    }
+
+    private async void OnSaveGroupClick(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is MaterialGroupView group)
+            await SaveSomeAsync(group.Course, group.Group.Files);
+    }
+
+    private async void OnSaveFileClick(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is MaterialFileView file)
+            await SaveSomeAsync(file.Course, [file.File]);
+    }
+
+    /// <summary>回ごと・ファイルごとの保存。</summary>
+    private async Task SaveSomeAsync(LacsCourse course, IReadOnlyList<LacsFile> files)
+    {
+        if (_core is null || _savingMaterials || files.Count == 0)
+            return;
+        _savingMaterials = true;
+        SetMaterialButtons(false);
+        try
+        {
+            using var client = await BrowserClientAsync();
+            await SaveFilesAsync(client, course, files);
+        }
+        catch (LacsLoginException)
+        {
+            MaterialsText.Text = "LACS のログインが切れています。上の ⟳ で読み込み直すと、ログインの画面になります。";
+        }
+        finally
+        {
+            _savingMaterials = false;
+            SetMaterialButtons(true);
         }
     }
 

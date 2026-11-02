@@ -312,6 +312,62 @@
                         <ui:Button x:Name="SaveMaterialsButton" Content="資料をまとめて保存" Appearance="Primary"
                                    Icon="{ui:SymbolIcon ArrowDownload24}" Padding="12,7" HorizontalAlignment="Stretch"
                                    Click="OnSaveMaterialsClick" />
+                        <!-- 回ごとの資料。押したときだけ LACS を読む（授業を選ぶたびに読みに行かない） -->
+                        <ui:Button x:Name="ListMaterialsButton" Content="回ごとに一覧にする" Icon="{ui:SymbolIcon List24}"
+                                   Padding="12,7" Margin="0,8,0,0" HorizontalAlignment="Stretch" Click="OnListMaterialsClick"
+                                   ToolTip="この授業のファイルを探して、授業の回ごとにまとめます。回ごと・ファイルごとに保存できます" />
+                        <ItemsControl x:Name="MaterialGroups" Margin="0,8,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="{DynamicResource CardBrush}" CornerRadius="8" Margin="0,0,0,6" Padding="10,7"
+                                            BorderBrush="{DynamicResource LineBrush}" BorderThickness="1">
+                                        <StackPanel>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Bold" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource TextBrush}" />
+                                                    <TextBlock Text="{Binding CountText}" FontSize="11"
+                                                               Foreground="{DynamicResource MutedBrush}" />
+                                                </StackPanel>
+                                                <ui:Button Grid.Column="1" Content="この回を保存" Icon="{ui:SymbolIcon ArrowDownload24}"
+                                                           Padding="8,4" FontSize="12" VerticalAlignment="Center" Margin="8,0,0,0"
+                                                           Click="OnSaveGroupClick"
+                                                           AutomationProperties.Name="{Binding SaveName}" />
+                                            </Grid>
+                                            <ItemsControl ItemsSource="{Binding Files}" Margin="0,6,0,0">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid Margin="0,2">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <StackPanel VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding Name}" FontSize="12" TextWrapping="Wrap"
+                                                                           ToolTip="{Binding Name}" Foreground="{DynamicResource TextBrush}" />
+                                                                <TextBlock Text="{Binding FileName}" FontSize="10" TextWrapping="Wrap"
+                                                                           Visibility="{Binding FileNameVisibility}"
+                                                                           Foreground="{DynamicResource MutedBrush}" />
+                                                            </StackPanel>
+                                                            <ui:Button Grid.Column="1" Style="{StaticResource IconButton}" Margin="6,0,0,0"
+                                                                       Click="OnSaveFileClick" ToolTip="このファイルを保存"
+                                                                       AutomationProperties.Name="{Binding SaveName}">
+                                                                <ui:SymbolIcon Symbol="ArrowDownload24" FontSize="14"
+                                                                               Foreground="{DynamicResource TextBrush}" />
+                                                            </ui:Button>
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                         <TextBlock x:Name="MaterialsText" FontSize="12" TextWrapping="Wrap" Margin="2,8,0,0"
                                    Foreground="{DynamicResource MutedBrush}" />
                         <ui:Button x:Name="OpenMaterialsButton" Content="保存したフォルダを開く" Icon="{ui:SymbolIcon FolderOpen24}"

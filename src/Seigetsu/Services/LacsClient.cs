@@ -23,11 +23,82 @@ public sealed record LacsCourse(string Id, string Code, string Name, string Term
 /// <summary>
 /// 授業の資料のファイル 1 つ。ファイルの項目なら EmbeddedUrl は null（添付から受け取る）、
 /// 本文に埋め込まれたファイルなら、そのアドレスと Xid（ファイルの番号）。Folder は LACS の中のフォルダの道すじ。
+/// Title は LACS の画面に出ている名前（ファイル名と違うことがある。例: 画面は「第3回の資料.pdf」、ファイルは「lecture03.pdf」）。
 /// </summary>
 public sealed record LacsFile(string CourseId, string ContentId, string? EmbeddedUrl, string Name, string Folder,
-    string Xid = "")
+    string Xid = "", string Title = "")
 {
     public string Key => $"{ContentId}/{Xid}";
+}
+
+/// <summary>授業の資料の、1 回分のまとまり。Title は「第4回」「10/29」「フォルダの名前」「そのほか」など。</summary>
+public sealed record LacsMaterialGroup(string Title, IReadOnlyList<LacsFile> Files);
+
+/// <summary>
+/// 授業の資料を、授業の回ごとにまとめる。
+/// 1. LACS の中でフォルダに入っている資料は、いちばん上のフォルダを 1 回分とみなす（「第4回」「Week 5」など）
+/// 2. フォルダに入っていない資料は、名前から回を読む（「第4回」「4回目」「#4」「Lecture 4」、日付「1029」「10/29」「10月29日」「261029」）。
+///    LACS の画面に出ている名前を先に見て、読めなければファイル名を見る（同じ授業で先生ごとに付け方が違っても、日付でそろいやすい）
+/// 3. どちらでも分からないものは「そのほか」
+/// 新しい回（番号や日付が大きいもの）を上に、フォルダは LACS の並びのまま、「そのほか」はいちばん下に置く。
+/// </summary>
+public static partial class LacsMaterials
+{
+    private const string Others = "そのほか";
+
+    public static IReadOnlyList<LacsMaterialGroup> GroupBySession(IEnumerable<LacsFile> files)
+    {
+        var groups = new List<(string Title, int Kind, int Order, List<LacsFile> Files)>();
+        foreach (var file in files)
+        {
+            var (title, kind, order) = SessionOf(file);
+            var group = groups.FirstOrDefault(g => g.Title == title);
+            if (group.Files is null)
+                groups.Add(group = (title, kind, kind == 2 ? groups.Count : order, []));
+            group.Files.Add(file);
+        }
+        // 回の番号（kind 0）と日付（kind 1）は新しいものから、フォルダ（kind 2）は LACS の並び、そのほか（kind 3）は最後
+        return groups
+            .OrderBy(g => g.Kind == 3 ? 2 : g.Kind == 2 ? 1 : 0)
+            .ThenByDescending(g => g.Kind is 0 or 1 ? g.Order : 0)
+            .ThenBy(g => g.Kind == 2 ? g.Order : 0)
+            .Select(g => new LacsMaterialGroup(g.Title, g.Files))
+            .ToList();
+    }
+
+    /// <summary>ファイル 1 つの回。(見出し, 種類 0=回の番号 1=日付 2=フォルダ 3=そのほか, 並べる順の値)</summary>
+    private static (string Title, int Kind, int Order) SessionOf(LacsFile file)
+    {
+        var folder = file.Folder.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (folder is not null)
+            return (folder, 2, 0);
+        foreach (var raw in new[] { file.Title, file.Name })
+        {
+            if (raw == "")
+                continue;
+            var name = raw.Normalize(System.Text.NormalizationForm.FormKC);
+            // 日付を先に見る（「第4回」と日付の両方が付いた名前は、日付でそろえる）
+            if (MonthDay().Match(name) is { Success: true } d
+                && int.Parse(d.Groups["m"].Value) is var month and >= 1 and <= 12
+                && int.Parse(d.Groups["d"].Value) is var day and >= 1 and <= 31)
+                return ($"{month}/{day}", 1, month * 100 + day);
+            if (SessionNumber().Match(name) is { Success: true } n)
+            {
+                var number = int.Parse(n.Groups.Values.Skip(1).First(g => g.Success && g.Value.All(char.IsAsciiDigit)).Value);
+                return ($"第{number}回", 0, number);
+            }
+        }
+        return (Others, 3, 0);
+    }
+
+    // 第4回・第 4 回・4回目・#4・Lecture 4・Lec.4・Week4・Class 4・Session 4・Chapter 4 など
+    [GeneratedRegex(@"第\s*(\d{1,2})\s*回|(?<!\d)(\d{1,2})\s*回目?|[#＃]\s*(\d{1,2})(?!\d)|\b(?:lecture|lec|week|class|session|chapter|ch)\.?\s*(\d{1,2})(?!\d)",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex SessionNumber();
+
+    // 10/29・10月29日・1029（前後に数字が続かない 4 けた）・261029（年月日の 6 けた）
+    [GeneratedRegex(@"(?<!\d)(?<m>\d{1,2})\s*(?:/|月)\s*(?<d>\d{1,2})(?!\d)|(?<!\d)(?:2\d)?(?<m>0[1-9]|1[0-2])(?<d>[0-3]\d)(?!\d)")]
+    private static partial Regex MonthDay();
 }
 
 /// <summary>
@@ -217,7 +288,7 @@ public sealed partial class LacsClient : IDisposable
                 if (kind == "resource/x-bb-file")
                 {
                     var name = handler.TryGetProperty("file", out var file) ? Str(file, "fileName") : "";
-                    files.Add(new LacsFile(courseId, id, null, name == "" ? title : name, folder));
+                    files.Add(new LacsFile(courseId, id, null, name == "" ? title : name, folder, Title: title));
                 }
                 var markup = Str(item, "body") + Str(handler, "instructions");
                 foreach (Match link in EmbeddedLink().Matches(markup))
@@ -238,7 +309,7 @@ public sealed partial class LacsClient : IDisposable
                         {
                         }
                     }
-                    files.Add(new LacsFile(courseId, id, url, Uri.UnescapeDataString(name), folder, xid.Groups[1].Value));
+                    files.Add(new LacsFile(courseId, id, url, Uri.UnescapeDataString(name), folder, xid.Groups[1].Value, title));
                 }
                 var hasChildren = item.TryGetProperty("hasChildren", out var h) && h.ValueKind == JsonValueKind.True;
                 if (hasChildren && depth < 6)
