@@ -475,6 +475,20 @@ public sealed class SeigetsuDatabase
         return counts;
     }
 
+    /// <summary>勉強の通知用: 未完了のタスクのうち、期限切れから days 日後までが締切のもの（締切の近い順）。</summary>
+    public IReadOnlyList<TaskItem> UpcomingTasks(int days)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT {TaskColumns} FROM tasks
+            WHERE completed = 0 AND due_date <> '' AND due_date <= $until
+            ORDER BY due_date, {PriorityOrder}, id
+            """;
+        command.Parameters.AddWithValue("$until", DateTime.Today.AddDays(days).ToString("yyyy-MM-dd"));
+        return ReadTasks(command);
+    }
+
     /// <summary>締切の通知用: 未完了のタスクのうち、(期限切れの数, 今日が締切の数)。</summary>
     public (int Overdue, int Today) DueCounts()
     {

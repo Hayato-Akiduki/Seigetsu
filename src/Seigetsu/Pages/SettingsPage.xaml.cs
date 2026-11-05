@@ -73,6 +73,17 @@ public partial class SettingsPage : UserControl, IRefreshable
         DueNotifyList.SelectedItem = DueNotifyList.Items.Cast<ListBoxItem>().FirstOrDefault(i => (string)i.Tag == dueNotify)
                                      ?? DueNotifyList.Items[0];
 
+        StudyNotifyList.SelectedIndex = db.GetSetting(SettingKeys.StudyNotify, "1") == "1" ? 0 : 1;
+
+        foreach (var box in new[] { SoundTimerBox, SoundDueBox, SoundClassesBox, SoundStudyBox })
+        {
+            if (box.Items.Count == 0)
+                foreach (var (value, label) in Toasts.Sounds)
+                    box.Items.Add(new ComboBoxItem { Content = label, Tag = value });
+            var current = Toasts.SoundFor(Enum.Parse<ToastKind>((string)box.Tag));
+            box.SelectedItem = box.Items.Cast<ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == current) ?? box.Items[0];
+        }
+
         var nagasaki = db.GetSetting(SettingKeys.NagasakiMode, "0");
         NagasakiModeList.SelectedItem = NagasakiModeList.Items.Cast<ListBoxItem>().FirstOrDefault(i => (string)i.Tag == nagasaki)
                                         ?? NagasakiModeList.Items[1];
@@ -186,6 +197,38 @@ public partial class SettingsPage : UserControl, IRefreshable
         if (_loading || !IsLoaded || DueNotifyList.SelectedItem is not ListBoxItem item)
             return;
         App.Database.SetSetting(SettingKeys.DueNotify, (string)item.Tag);
+    }
+
+    private void OnStudyNotifyChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || !IsLoaded || StudyNotifyList.SelectedItem is not ListBoxItem item)
+            return;
+        App.Database.SetSetting(SettingKeys.StudyNotify, (string)item.Tag);
+    }
+
+    private void OnSoundChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || !IsLoaded || sender is not ComboBox { SelectedItem: ComboBoxItem item } box)
+            return;
+        var key = Toasts.SoundKey(Enum.Parse<ToastKind>((string)box.Tag));
+        if (key is not null)
+            App.Database.SetSetting(key, (string)item.Tag);
+    }
+
+    // 選んでいる音で、その種類の通知の見本を出す
+    private void OnSoundTestClick(object sender, RoutedEventArgs e)
+    {
+        var kind = Enum.Parse<ToastKind>((string)((FrameworkElement)sender).Tag);
+        var (title, body) = kind switch
+        {
+            ToastKind.Timer => ("通知の見本：集中タイマー", "作業時間が終わると、このように知らせます。"),
+            ToastKind.Due => ("通知の見本：タスクの締切", "今日が締切のタスクがあると、このように知らせます。"),
+            ToastKind.Study => ("通知の見本：勉強の通知", "10 時・14 時・18 時に、このように知らせます。"),
+            _ => ("通知の見本：授業の変更", "休講・補講・教室変更が見つかると、このように知らせます。"),
+        };
+        if (!Toasts.Show(kind, title, body))
+            Main.Notify("Windows の通知を出せませんでした。Windows の設定で、霽月の通知がオフになっていないか確かめてください。",
+                Wpf.Ui.Controls.ControlAppearance.Caution, 6);
     }
 
     private void OnNagasakiModeChanged(object sender, SelectionChangedEventArgs e)

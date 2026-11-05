@@ -68,6 +68,8 @@ public partial class App : Application
         DesktopStickies = new DesktopStickies();
         Weather = new WeatherService();
         Nagasaki = new NagasakiSync();
+        // Windows の通知のボタンが押されたのを受け取る（通知から起動したときも、ここで受け取る）
+        Toasts.Initialize(Dispatcher);
 
         // 起動アニメーション。Windows の起動で自動に立ち上がったときや、設定でオフにしたときは出さない。
         // はじめて開いたときだけ画面全体の大きな演出にして、2 回目からは小さな演出にする

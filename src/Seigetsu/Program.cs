@@ -13,7 +13,11 @@ public static class Program
     {
         VelopackApp.Build()
             // アンインストールするときは、自動起動の設定も消しておく（消したあとに起動しようとしないように）
-            .OnBeforeUninstallFastCallback(_ => Services.AutoStart.SetEnabled(false))
+            .OnBeforeUninstallFastCallback(_ =>
+            {
+                Services.AutoStart.SetEnabled(false);
+                Services.Toasts.Uninstall(); // Windows に登録した通知の情報も消す
+            })
             .Run();
 
         var app = new App();

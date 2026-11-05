@@ -45,6 +45,12 @@ public static class SettingKeys
     public const string FocusLock = "focus_lock";               // 1 / 0 集中タイマーのあいだ全画面でロックするか（v7 だけの設定）
     public const string DueNotify = "due_notify";               // 1 / 0 締切の通知（v7 だけの設定）
     public const string DueNotifiedOn = "due_notified_on";      // 締切を最後に知らせた日（yyyy-MM-dd）
+    public const string SoundTimer = "notify_sound_timer";      // 通知の音（タイマー）。default / reminder / mail / im / sms / silent（v7 だけの設定）
+    public const string SoundDue = "notify_sound_due";          // 通知の音（締切）
+    public const string SoundClasses = "notify_sound_classes";  // 通知の音（授業の変更）
+    public const string SoundStudy = "notify_sound_study";      // 通知の音（10・14・18 時の勉強の通知）
+    public const string StudyNotify = "study_notify";           // 1 / 0 10・14・18 時に課題や勉強の通知を出すか（v7 だけの設定）
+    public const string StudyNotified = "study_notified";       // 勉強の通知を最後に出した枠（yyyy-MM-dd HH）
     public const string NagasakiMode = "nagasaki_mode";         // 1 / 0 長崎大学モード（v7 だけの設定）
     public const string NagasakiSyncedAt = "nagasaki_synced_at";  // 大学の情報を最後に読み込めた日時
     public const string NagasakiStatus = "nagasaki_status";       // 前回の自動更新の結果（設定画面に出す 1 行）

@@ -112,6 +112,62 @@
                     </StackPanel>
                 </Border>
 
+                <!-- 勉強の通知 -->
+                <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="勉強の通知（10 時・14 時・18 時）" Style="{StaticResource CardTitle}" Margin="0,0,0,2" />
+                        <TextBlock Style="{StaticResource Muted}" FontSize="12" Margin="0,0,0,12" TextWrapping="Wrap"
+                                   Text="3 日以内が締切の課題があれば、その一覧を知らせます。なければ、勉強をうながす通知を出します。集中タイマーで作業している最中は出しません。" />
+                        <ListBox x:Name="StudyNotifyList" Style="{StaticResource SegmentedList}" HorizontalAlignment="Left"
+                                 SelectionChanged="OnStudyNotifyChanged">
+                            <ListBoxItem Content="知らせる" Tag="1" />
+                            <ListBoxItem Content="知らせない" Tag="0" />
+                        </ListBox>
+                    </StackPanel>
+                </Border>
+
+                <!-- 通知の音 -->
+                <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="通知の音" Style="{StaticResource CardTitle}" Margin="0,0,0,2" />
+                        <TextBlock Style="{StaticResource Muted}" FontSize="12" Margin="0,0,0,12" TextWrapping="Wrap"
+                                   Text="Windows の通知で鳴らす音を、種類ごとに選べます。「試す」でその音の通知を出します。" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="集中タイマー" Style="{StaticResource Muted}" FontSize="14" VerticalAlignment="Center" Margin="0,0,16,8" />
+                            <ComboBox x:Name="SoundTimerBox" Grid.Column="1" Width="150" Margin="0,0,8,8" Tag="Timer"
+                                      AutomationProperties.Name="集中タイマーの通知の音" SelectionChanged="OnSoundChanged" />
+                            <ui:Button Grid.Column="2" Content="試す" Icon="{ui:SymbolIcon Speaker224}" Padding="12,6" Margin="0,0,0,8"
+                                       Tag="Timer" Click="OnSoundTestClick" />
+                            <TextBlock Grid.Row="1" Text="タスクの締切" Style="{StaticResource Muted}" FontSize="14" VerticalAlignment="Center" Margin="0,0,16,8" />
+                            <ComboBox x:Name="SoundDueBox" Grid.Row="1" Grid.Column="1" Width="150" Margin="0,0,8,8" Tag="Due"
+                                      AutomationProperties.Name="締切の通知の音" SelectionChanged="OnSoundChanged" />
+                            <ui:Button Grid.Row="1" Grid.Column="2" Content="試す" Icon="{ui:SymbolIcon Speaker224}" Padding="12,6" Margin="0,0,0,8"
+                                       Tag="Due" Click="OnSoundTestClick" />
+                            <TextBlock Grid.Row="2" Text="授業の変更" Style="{StaticResource Muted}" FontSize="14" VerticalAlignment="Center" Margin="0,0,16,8" />
+                            <ComboBox x:Name="SoundClassesBox" Grid.Row="2" Grid.Column="1" Width="150" Margin="0,0,8,8" Tag="Classes"
+                                      AutomationProperties.Name="授業の変更の通知の音" SelectionChanged="OnSoundChanged" />
+                            <ui:Button Grid.Row="2" Grid.Column="2" Content="試す" Icon="{ui:SymbolIcon Speaker224}" Padding="12,6" Margin="0,0,0,8"
+                                       Tag="Classes" Click="OnSoundTestClick" />
+                            <TextBlock Grid.Row="3" Text="勉強の通知" Style="{StaticResource Muted}" FontSize="14" VerticalAlignment="Center" Margin="0,0,16,0" />
+                            <ComboBox x:Name="SoundStudyBox" Grid.Row="3" Grid.Column="1" Width="150" Margin="0,0,8,0" Tag="Study"
+                                      AutomationProperties.Name="勉強の通知の音" SelectionChanged="OnSoundChanged" />
+                            <ui:Button Grid.Row="3" Grid.Column="2" Content="試す" Icon="{ui:SymbolIcon Speaker224}" Padding="12,6"
+                                       Tag="Study" Click="OnSoundTestClick" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
                 <!-- × ボタン -->
                 <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                     <StackPanel>

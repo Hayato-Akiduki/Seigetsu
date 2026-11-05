@@ -33,6 +33,7 @@ public partial class MainWindow : FluentWindow
         new("stickies", "付箋", SymbolRegular.Note24, () => new StickiesPage()),
         new("board", "掲示板", SymbolRegular.Board24, () => new BoardPage()),
         new("music", "BGM", SymbolRegular.MusicNote224, () => new MusicPage()),
+        new("recommend", "おすすめ", SymbolRegular.Sparkle24, () => new RecommendPage()),
         new("settings", "設定", SymbolRegular.Settings24, () => new SettingsPage()),
     ];
 
@@ -46,6 +47,9 @@ public partial class MainWindow : FluentWindow
 
     // 1 日 1 回の仕事（自動バックアップと締切の通知）。起動の 5 秒後と、その後 10 分ごとに「今日はもう済んだか」を見る
     private readonly DispatcherTimer _daily = new() { Interval = TimeSpan.FromSeconds(5) };
+
+    // 10・14・18 時の勉強の通知。1 分ごとに「今の枠をもう知らせたか」を見る
+    private readonly DispatcherTimer _study = new() { Interval = TimeSpan.FromMinutes(1) };
 
     private bool? _miniRunning;
 
@@ -77,10 +81,14 @@ public partial class MainWindow : FluentWindow
             RunDailyJobs();
         };
         _daily.Start();
+        _study.Tick += (_, _) => RemindStudy();
+        _study.Start();
         _tick.Start();
         // 曲が終わって次の曲に進んだときなど、どの画面にいても小さな表示を合わせる
         App.Player.StateChanged += UpdateMiniTimer;
         UpdateMiniTimer();
+        // Windows の通知のボタンが押されたら、ここで受け取る
+        Toasts.SetHandler(OnToastAction);
     }
 
     private void OnNavSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -249,7 +257,8 @@ public partial class MainWindow : FluentWindow
         var message = $"新しい版 {version} の準備ができました。アプリを閉じると更新されます（設定画面から今すぐ更新もできます）。";
         Notify(message, ControlAppearance.Info, 8);
         if (!IsActive)
-            _tray.Notify("霽月 - アップデート", message);
+            ShowToast(ToastKind.Update, $"新しい版 {version} の準備ができました", "アプリを閉じると更新されます。",
+                buttons: [new("今すぐ更新", "updateNow")], clickAction: "settings");
         DataChanged(); // 設定画面を開いていれば「今すぐ更新」を出す
     }
 
@@ -393,13 +402,14 @@ public partial class MainWindow : FluentWindow
     /// 今日が締切のタスクや期限切れのタスクがあれば、1 日 1 回 Windows の通知で知らせる。
     /// その日の分を知らせたら、次の日まで知らせない。
     /// </summary>
-    private void RemindDueTasks()
+    private void RemindDueTasks(bool snoozed = false)
     {
         var db = App.Database;
         if (db.GetSetting(SettingKeys.DueNotify, "1") != "1")
             return;
         var today = DateTime.Today.ToString("yyyy-MM-dd");
-        if (db.GetSetting(SettingKeys.DueNotifiedOn, "") == today)
+        // 「1 時間後にもう一度」で呼ばれたときは、今日もう知らせていても知らせる
+        if (!snoozed && db.GetSetting(SettingKeys.DueNotifiedOn, "") == today)
             return;
         var (overdue, dueToday) = db.DueCounts();
         if (overdue + dueToday == 0)
@@ -411,10 +421,80 @@ public partial class MainWindow : FluentWindow
         if (overdue > 0)
             parts.Add($"期限切れのタスクが {overdue} 件");
         var message = string.Join("、", parts) + "あります。";
-        _tray.Notify("霽月 - タスクの締切", message);
+        // 締切の近いものから 3 件、名前を並べる
+        var tasks = db.TodayTasks(8).Where(t => t.DueDate != "" && string.CompareOrdinal(t.DueDate, today) <= 0).ToList();
+        var lines = tasks.Take(3).Select(t => t.DueDate == today
+            ? $"{t.Title}（今日まで）"
+            : $"{t.Title}（{DateTime.ParseExact(t.DueDate, "yyyy-MM-dd", null):M/d} まで）").ToList();
+        ShowToast(ToastKind.Due, dueToday > 0 ? $"今日が締切のタスクが {dueToday} 件あります" : $"期限切れのタスクが {overdue} 件あります",
+            dueToday > 0 && overdue > 0
+                ? $"期限切れのタスクも {overdue} 件あります。{NotifyPhrases.DueBody(overdueOnly: false)}"
+                : NotifyPhrases.DueBody(overdueOnly: dueToday == 0),
+            lines, note: overdue + dueToday > lines.Count ? $"ほか {overdue + dueToday - lines.Count} 件" : null,
+            buttons: [new("タスクを開く", "tasks"), new("1 時間後にもう一度", "snoozeDue")], clickAction: "tasks");
         if (IsVisible)
             Notify(message, ControlAppearance.Info, 8);
         db.SetSetting(SettingKeys.DueNotifiedOn, today);
+    }
+
+    // 勉強の通知を出す時刻
+    private static readonly int[] StudyHours = [10, 14, 18];
+
+    /// <summary>
+    /// 10・14・18 時に、締切の近い課題があればそれを、なければ勉強をうながす通知を出す。
+    /// スリープの復帰や起動が少し遅れたときのために、その時刻から 1 時間のあいだなら出す（1 つの枠で 1 回だけ）。
+    /// </summary>
+    private void RemindStudy()
+    {
+        var db = App.Database;
+        if (db.GetSetting(SettingKeys.StudyNotify, "1") != "1")
+            return;
+        var now = DateTime.Now;
+        var hour = StudyHours.FirstOrDefault(h => now >= now.Date.AddHours(h) && now < now.Date.AddHours(h + 1));
+        if (hour == 0)
+            return;
+        var slot = $"{now:yyyy-MM-dd} {hour:00}";
+        if (db.GetSetting(SettingKeys.StudyNotified, "") == slot)
+            return;
+        db.SetSetting(SettingKeys.StudyNotified, slot);
+
+        // 集中タイマーで作業している最中は、じゃましない
+        if (App.Timer.Running && !(App.Timer.IsPomodoro && App.Timer.Phase == TimerPhase.Break))
+            return;
+
+        var today = now.ToString("yyyy-MM-dd");
+        var tasks = db.UpcomingTasks(days: 3);
+        if (tasks.Count > 0)
+        {
+            var overdue = tasks.Count(t => string.CompareOrdinal(t.DueDate, today) < 0);
+            var title = overdue > 0
+                ? $"期限切れの課題が {overdue} 件あります"
+                : $"締切が近い課題が {tasks.Count} 件あります";
+            var lines = tasks.Take(3).Select(t => $"{t.Title}（{DueLabel(t.DueDate, now.Date)}）").ToList();
+            ShowToast(ToastKind.Study, title, NotifyPhrases.TasksBody(hour), lines,
+                note: tasks.Count > 3 ? $"ほか {tasks.Count - 3} 件" : null,
+                buttons: [new("集中タイマーを始める", "startFocus"), new("タスクを開く", "tasks")], clickAction: "tasks");
+        }
+        else
+        {
+            var (title, body) = NotifyPhrases.Study(hour);
+            ShowToast(ToastKind.Study, title, body, note: NotifyPhrases.StudyNote(db.WorkSecondsToday()),
+                buttons: [new("集中タイマーを始める", "startFocus"), new("あとで", "dismiss")], clickAction: "timer");
+        }
+    }
+
+    // 「今日まで」「明日まで」「11/7（土）まで」「期限切れ（11/1）」
+    private static string DueLabel(string dueDate, DateTime today)
+    {
+        var due = DateTime.ParseExact(dueDate, "yyyy-MM-dd", null);
+        var days = (due - today).Days;
+        return days switch
+        {
+            < 0 => $"期限切れ・{due:M/d}",
+            0 => "今日まで",
+            1 => "明日まで",
+            _ => $"{due:M/d}（{due.ToString("ddd", System.Globalization.CultureInfo.GetCultureInfo("ja-JP"))}）まで",
+        };
     }
 
     /// <summary>
@@ -523,9 +603,11 @@ public partial class MainWindow : FluentWindow
         if (report.ChangeAlerts is { Count: > 0 } changes)
         {
             var lines = changes.Take(3).ToList();
+            ShowToast(ToastKind.Classes, $"授業の変更が {changes.Count} 件見つかりました", NotifyPhrases.ClassesBody(),
+                lines, note: changes.Count > 3 ? $"ほか {changes.Count - 3} 件（大学のページで見られます）" : null,
+                buttons: [new("大学のページを開く", "university"), new("LACS を開く", "lacs")], clickAction: "university");
             if (changes.Count > 3)
                 lines.Add($"ほか {changes.Count - 3} 件（大学のページで見られます）");
-            _tray.Notify("霽月 - 授業の変更", string.Join("\n", lines));
             Notify("授業の変更が見つかりました。\n" + string.Join("\n", lines), ControlAppearance.Caution, 10);
             return;
         }
@@ -615,22 +697,109 @@ public partial class MainWindow : FluentWindow
 
     private void OnPhaseFinished(TimerFinish finished)
     {
-        var message = finished switch
+        // 本文は毎回少し違う言い方にする（アプリの中の帯と Windows の通知で同じものを使う）
+        var (title, body, buttons) = finished switch
         {
-            TimerFinish.Work => "作業時間が終わりました。少し休憩しましょう。",
-            TimerFinish.Break => "休憩が終わりました。次の作業を始めましょう。",
-            _ => $"タイマー（{FocusTimer.LengthLabel(App.Timer.CountdownSeconds)}）が終わりました。",
+            TimerFinish.Work => ("作業時間が終わりました",
+                NotifyPhrases.WorkFinished(FocusTimer.LengthLabel(App.Timer.BreakSeconds)),
+                new List<ToastButtonSpec> { new("休憩を始める", "startBreak"), new("休憩をとばす", "skipBreak") }),
+            TimerFinish.Break => ("休憩が終わりました",
+                NotifyPhrases.BreakFinished(FocusTimer.LengthLabel(App.Timer.WorkSeconds)),
+                new List<ToastButtonSpec> { new("作業を始める", "startWork") }),
+            _ => ($"タイマー（{FocusTimer.LengthLabel(App.Timer.CountdownSeconds)}）が終わりました",
+                NotifyPhrases.CountdownFinished(),
+                new List<ToastButtonSpec> { new("もう一度", "again") }),
         };
-        Notify(message, ControlAppearance.Success, 8);
-        SystemSounds.Asterisk.Play();
-        // ほかのアプリを使っているときやタスクトレイに隠れているときは、Windows の通知でも知らせる
+        Notify($"{title}。{body}", ControlAppearance.Success, 8);
+        // ほかのアプリを使っているときやタスクトレイに隠れているときは、Windows の通知でも知らせる（音は通知が鳴らす）
         if (!IsActive)
         {
-            _tray.Notify(finished == TimerFinish.Countdown ? "霽月 - タイマー" : "霽月 - 集中タイマー", message);
+            ShowToast(ToastKind.Timer, title, body,
+                note: NotifyPhrases.FocusNote(App.Database.WorkSecondsToday()), buttons: buttons, clickAction: "timer");
             if (IsVisible)
                 FlashTaskbar();
         }
+        else if (Toasts.SoundFor(ToastKind.Timer) != "silent")
+        {
+            SystemSounds.Asterisk.Play();
+        }
         DataChanged();
+    }
+
+    // ---- Windows の通知 -----------------------------------------------
+    /// <summary>
+    /// Windows の通知（見出し・アイコン・ボタン・音つき）を出す。出せなかったときは、タスクトレイのバルーンで知らせる。
+    /// </summary>
+    public void ShowToast(ToastKind kind, string title, string body, IReadOnlyList<string>? lines = null,
+        string? note = null, IReadOnlyList<ToastButtonSpec>? buttons = null, string clickAction = "open")
+    {
+        if (Toasts.Show(kind, title, body, lines, note, buttons, clickAction))
+            return;
+        var text = string.Join("\n", new[] { body }.Concat(lines ?? []).Append(note ?? "").Where(s => s != ""));
+        _tray.Notify($"霽月 - {title}", text);
+    }
+
+    // 締切の「1 時間後にもう一度」
+    private DispatcherTimer? _dueSnooze;
+
+    /// <summary>Windows の通知や、そのボタンが押されたとき。</summary>
+    private void OnToastAction(string action)
+    {
+        var timer = App.Timer;
+        switch (action)
+        {
+            // タイマーのボタンは、窓を出さずにタイマーだけ動かす（状態が変わっていたら、窓を出すだけにする）
+            case "startBreak" when timer.IsPomodoro && timer.Phase == TimerPhase.Break && !timer.Running:
+            case "startWork" when timer.IsPomodoro && timer.Phase == TimerPhase.Work && !timer.Running:
+            case "again" when timer.IsCountdown && !timer.Running:
+                timer.Start();
+                TimerChanged();
+                break;
+            case "skipBreak" when timer.IsPomodoro && timer.Phase == TimerPhase.Break && !timer.Running:
+                timer.SkipPhase();
+                timer.Start();
+                TimerChanged();
+                break;
+            case "startFocus":
+                // 止まっていれば今のモードのまま始める。もう動いていれば、タイマーの画面を出すだけ
+                if (!timer.Running)
+                {
+                    timer.Start();
+                    TimerChanged();
+                    Notify("集中タイマーを始めました。");
+                }
+                else
+                {
+                    ShowFromTray();
+                    ShowPage("timer");
+                }
+                break;
+            case "snoozeDue":
+                _dueSnooze?.Stop();
+                _dueSnooze = new DispatcherTimer { Interval = TimeSpan.FromHours(1) };
+                _dueSnooze.Tick += (_, _) =>
+                {
+                    _dueSnooze?.Stop();
+                    _dueSnooze = null;
+                    RemindDueTasks(snoozed: true);
+                };
+                _dueSnooze.Start();
+                break;
+            case "updateNow":
+                UpdateNow();
+                break;
+            case "tasks" or "timer" or "lacs" or "settings":
+                ShowFromTray();
+                ShowPage(action);
+                break;
+            case "university":
+                ShowFromTray();
+                ShowPage(_visible.Any(i => i.Key == "university") ? "university" : "calendar");
+                break;
+            default:
+                ShowFromTray();
+                break;
+        }
     }
 
     // ロック画面の「長押しで一時停止」
@@ -714,7 +883,7 @@ public partial class MainWindow : FluentWindow
             if (!_trayHintShown)
             {
                 _trayHintShown = true;
-                _tray.Notify("霽月", "タスクトレイで動いています。アイコンをクリックすると再び開きます。");
+                ShowToast(ToastKind.App, "タスクトレイで動いています", "タスクトレイのアイコンをクリックすると、再び開きます。");
             }
             base.OnClosing(e);
             return;
@@ -728,6 +897,7 @@ public partial class MainWindow : FluentWindow
         App.DesktopStickies.CloseAll(); // 出していた付箋は、次に起動したときにまた出る
         _tick.Stop();
         _daily.Stop();
+        _study.Stop();
         App.Player.StateChanged -= UpdateMiniTimer;
         App.Player.Dispose();
         _tray.Dispose();
