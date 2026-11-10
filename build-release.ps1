@@ -40,8 +40,13 @@ dotnet tool restore | Out-Null
 
 if ($repoUrl) {
     Write-Host "== 2/4 前の版を取ってくる（差分の更新ファイルを作るため。初めてのときは無くてよい）"
-    dotnet vpk download github --repoUrl $repoUrl --outputDir $releasesDir
-    if ($LASTEXITCODE -ne 0) { Write-Host "   前の版は見つかりませんでした（初めての公開なら問題ありません）。" }
+    # トークンがあれば渡す（無いと GitHub の回数制限 403 にかかりやすい）
+    if ($env:GITHUB_TOKEN) {
+        dotnet vpk download github --repoUrl $repoUrl --token $env:GITHUB_TOKEN --outputDir $releasesDir
+    } else {
+        dotnet vpk download github --repoUrl $repoUrl --outputDir $releasesDir
+    }
+    if ($LASTEXITCODE -ne 0) { Write-Host "   前の版を取れませんでした（初めての公開なら問題ありません。差分の更新ファイルが作られないだけです）。" }
 } else {
     Write-Host "== 2/4 リポジトリが未設定なので、前の版の取得は飛ばします"
 }
