@@ -22,7 +22,11 @@ public sealed class FocusTimer(SeigetsuDatabase db)
     public const string StopwatchModeName = "通常";
     public const string PomodoroWorkModeName = "ポモドーロ-作業";
 
+    // Tick の間がこれより空いたら、PC がスリープしていたとみなす（ふだんは 0.5 秒ごとに呼ばれる）
+    private static readonly TimeSpan SleepGap = TimeSpan.FromSeconds(60);
+
     private long _startedAt;     // 動き始めた時刻（Stopwatch のタイムスタンプ）
+    private long _lastTick;      // 前に Tick が呼ばれた時刻（スリープに気づくため）
     private double _accumulated; // 一時停止までにたまった秒数
 
     public TimerMode Mode { get; private set; } = TimerMode.Stopwatch;
@@ -82,6 +86,7 @@ public sealed class FocusTimer(SeigetsuDatabase db)
             return;
         Running = true;
         _startedAt = Stopwatch.GetTimestamp();
+        _lastTick = _startedAt;
     }
 
     public void Pause()
@@ -141,6 +146,7 @@ public sealed class FocusTimer(SeigetsuDatabase db)
     /// <summary>定期的に呼ぶ。ポモドーロのフェーズやタイマーが終わったら、終わったものを返す。</summary>
     public TimerFinish? Tick()
     {
+        SkipSleep();
         if (!CountsDown || !Running || Remaining > 0)
             return null;
         Running = false;
@@ -152,6 +158,23 @@ public sealed class FocusTimer(SeigetsuDatabase db)
             db.AddSession(PhaseLength, PomodoroWorkModeName);
         Phase = Next(finished);
         return finished == TimerPhase.Work ? TimerFinish.Work : TimerFinish.Break;
+    }
+
+    /// <summary>
+    /// PC がスリープしていた時間を、作業時間に数えない。Stopwatch の時計はスリープ中も進むので、
+    /// 計っている最中にふたを閉じると、寝ていた時間まで作業の記録に入ってしまう。
+    /// 前の Tick から長く空いていたら、その分だけ始まりの時刻をずらして、なかったことにする。
+    /// 休憩と「タイマー」は実際の時刻どおりに進める（スリープから戻ったら終わっている方が自然なため）。
+    /// </summary>
+    private void SkipSleep()
+    {
+        if (!Running)
+            return;
+        var now = Stopwatch.GetTimestamp();
+        var countsAsWork = Mode == TimerMode.Stopwatch || (IsPomodoro && Phase == TimerPhase.Work);
+        if (countsAsWork && Stopwatch.GetElapsedTime(_lastTick, now) > SleepGap)
+            _startedAt += now - _lastTick;
+        _lastTick = now;
     }
 
     private static TimerPhase Next(TimerPhase phase) =>

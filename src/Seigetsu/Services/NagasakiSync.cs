@@ -213,12 +213,35 @@ public sealed class NagasakiSync
         {
             report = new NagasakiReport(false, false, 0, 0, 0, error.Message);
         }
+        catch (Exception error)
+        {
+            // 考えていなかった種類のエラー（データベースが混んでいたときなど）。ここで受け止めないと、
+            // 下の「次の更新の予定」まで進まず、自動更新が止まったままになる。中身は error-v7.log に残す
+            NagasakiLog.Write($"考えていなかったエラーで止まりました（{error.GetType().Name}）");
+            try
+            {
+                File.AppendAllText(AppPaths.ErrorLogPath,
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] 大学の自動更新: {error}{Environment.NewLine}{Environment.NewLine}");
+            }
+            catch (Exception logError) when (logError is IOException or UnauthorizedAccessException)
+            {
+            }
+            report = new NagasakiReport(false, false, 0, 0, 0, error.Message);
+        }
 
         var status = Describe(report);
         NagasakiLog.Write($"結果：{status}");
-        App.Database.SetSetting(SettingKeys.NagasakiStatus, status);
-        if (!report.NeedsLogin && report.Error is null)
-            App.Database.SetSetting(SettingKeys.NagasakiSyncedAt, DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"));
+        try
+        {
+            App.Database.SetSetting(SettingKeys.NagasakiStatus, status);
+            if (!report.NeedsLogin && report.Error is null)
+                App.Database.SetSetting(SettingKeys.NagasakiSyncedAt, DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"));
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException error)
+        {
+            // 結果を残せなくても、次の更新の予定は入れる
+            NagasakiLog.Write($"結果を残せませんでした（{error.Message}）");
+        }
         _running = null;
         // 次の自動更新は、この更新が終わってから 2〜3 時間後（ボタンで更新したときも数え直す）
         ScheduleNext();

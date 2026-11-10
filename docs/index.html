@@ -286,6 +286,9 @@
         <span class="chip">Windows の起動時に自動で起動</span>
         <span class="chip">毎日の自動バックアップ</span>
         <span class="chip">自動更新</span>
+        <span class="chip">集中ロック</span>
+        <span class="chip">おすすめのサイト</span>
+        <span class="chip">長崎大学モード（時間割・LACS）</span>
       </div>
     </div>
   </section>
@@ -396,10 +399,11 @@
           <tbody>
             <tr><td>天気</td><td>設定画面で入れた地域名と、その場所の緯度・経度</td><td><a href="https://open-meteo.com/">Open-Meteo</a>（無料の天気サービス）</td></tr>
             <tr><td>自動更新</td><td>新しい版があるかの確認</td><td>GitHub</td></tr>
+            <tr><td>長崎大学モード（オンにしたときだけ）</td><td>大学のサイトのログインの情報（Cookie）と、時間割・課題・掲示などを読むための要求</td><td>長崎大学の NU-Web・LACS・長大ID のログインのページ。LACS の資料を保存するときは、LACS のファイル置き場（Blackboard）</td></tr>
           </tbody>
         </table>
       </div>
-      <p class="section-lead" style="margin-top: 12px;">この 2 つのほかに、データを送ることはありません。</p>
+      <p class="section-lead" style="margin-top: 12px;">この 3 つのほかに、データを送ることはありません。長崎大学モードは、はじめはオフです。ログインは霽月の中に開く大学のページで自分で行い、パスワードは霽月は読まず、保存もしません。ログインの情報（Cookie）は、この PC の中に暗号化して残します。</p>
     </div>
   </section>
 
@@ -409,7 +413,7 @@
       <div class="table-wrap">
         <table>
           <tbody>
-            <tr><td><kbd>Ctrl</kbd> + <kbd>1</kbd>〜<kbd>9</kbd>、<kbd>0</kbd></td><td>画面を切り替える（ホーム・タスク・集中タイマー・メモ・カレンダー・分析・付箋・掲示板・BGM・設定の順）</td></tr>
+            <tr><td><kbd>Ctrl</kbd> + <kbd>1</kbd>〜<kbd>9</kbd>、<kbd>0</kbd></td><td>画面を切り替える。左のメニューの上から 1〜10 番目（ホーム・タスク・集中タイマー・メモ・カレンダー・分析・付箋・掲示板・BGM・おすすめの順。長崎大学モードのときは、カレンダーの次に「大学」「LACS」が入り、その分うしろにずれます）</td></tr>
             <tr><td><kbd>Ctrl</kbd> + <kbd>N</kbd></td><td>新しいタスク</td></tr>
             <tr><td><kbd>Ctrl</kbd> + <kbd>B</kbd></td><td>左のメニューを開く／閉じる</td></tr>
             <tr><td><kbd>F11</kbd></td><td>時計の大画面表示（<kbd>Esc</kbd> で戻る）</td></tr>
@@ -466,7 +470,7 @@
       <span>霽月 - Seigetsu</span>
       <span><a href="https://github.com/Hayato-Akiduki/Seigetsu">GitHub</a> ・ <a href="https://github.com/Hayato-Akiduki/Seigetsu/releases">すべての版</a></span>
     </div>
-    <p>使っているオープンソースの部品：WPF-UI、Microsoft.Data.Sqlite、NAudio、NAudio.Vorbis、Velopack（いずれも MIT ライセンス）。天気のデータは <a href="https://open-meteo.com/">Open-Meteo</a> によるものです。</p>
+    <p>使っているオープンソースの部品：WPF-UI、Microsoft.Data.Sqlite、NAudio、NAudio.Vorbis、Velopack、Windows Community Toolkit（いずれも MIT ライセンス）。大学のページの表示には Microsoft の WebView2 を使っています。天気のデータは <a href="https://open-meteo.com/">Open-Meteo</a> によるものです。</p>
   </div>
 </footer>
 
