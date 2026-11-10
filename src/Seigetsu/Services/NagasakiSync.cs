@@ -14,8 +14,12 @@ namespace Seigetsu.Services;
 /// </summary>
 public sealed record NagasakiReport(
     bool NuWebNeedsLogin, bool LacsNeedsLogin, int Classes, int Assignments, int Added, string? Error,
-    string? LacsNote = null, int NewAnnouncements = 0, IReadOnlyList<string>? ChangeAlerts = null)
+    string? LacsNote = null, int NewAnnouncements = 0, IReadOnlyList<string>? ChangeAlerts = null,
+    IReadOnlyList<string>? NewTasks = null, IReadOnlyList<string>? NewNotices = null)
 {
+    // NewTasks は新しく取り込んだ（まだ出していない）課題、NewNotices は新しい連絡事項や掲示（授業の変更として
+    // ChangeAlerts に入れたものは除く）。どちらも通知に並べる 1 行の文
+
     public bool NeedsLogin => NuWebNeedsLogin || LacsNeedsLogin;
 }
 
@@ -324,6 +328,9 @@ public sealed class NagasakiSync
 
         // 新しく見つかった授業の変更（休講・補講・教室変更と、それを知らせていそうな新しい連絡）。最後にまとめて知らせる
         var changeAlerts = new List<string>();
+        // 新しく見つかった課題と、新しい連絡事項・掲示（Windows の通知で知らせる）
+        var newTasks = new List<string>();
+        var newNotices = new List<string>();
 
         // ---- NU-Web の休講補講参照（今日から 4 週間。読めなくても、ほかの結果はそのまま） ----
         if (nuWebOk)
@@ -347,7 +354,7 @@ public sealed class NagasakiSync
         }
 
         // ---- NU-Web の掲示（読めなくても、時間割や LACS の結果はそのまま） ----
-        var newNotices = 0;
+        var newNoticeCount = 0;
         if (nuWebOk)
         {
             try
@@ -358,7 +365,7 @@ public sealed class NagasakiSync
                     MaxNoticeBodies);
                 var url = $"https://{NagasakiUniversity.NuWebHost}{NuWebClient.NoticeBoardPath}";
                 // 本文を開かなかった掲示（残してあるもの）も、題名やジャンルは新しい値に合わせる
-                newNotices = App.Database.SaveAnnouncements(AnnouncementSource.NuWeb, notices
+                newNoticeCount = App.Database.SaveAnnouncements(AnnouncementSource.NuWeb, notices
                     .Select(n => new AnnouncementInput(AnnouncementSource.NuWeb, n.Id, n.Sender, n.Genre, n.Title, n.Body,
                         n.Posted, url)));
                 // 初めて読み込んだとき（前に 1 件も無かったとき）は、前からある掲示なので知らせない
@@ -368,6 +375,8 @@ public sealed class NagasakiSync
                     {
                         if (NagasakiUniversity.ClassChangeHint(n.Title, n.Body!) is { } hint)
                             changeAlerts.Add($"NU-Web の掲示「{n.Title}」（{hint}）");
+                        else
+                            newNotices.Add($"NU-Web の掲示「{n.Title}」");
                     }
                 }
             }
@@ -409,7 +418,7 @@ public sealed class NagasakiSync
                 var now = DateTimeOffset.Now;
                 var result = await lacs.ReadAssignmentsAsync(now.AddDays(-7), now.AddDays(120));
                 assignments = result.Assignments.Count;
-                added = NagasakiUniversity.ImportAssignments(result.Assignments).Added;
+                added = NagasakiUniversity.ImportAssignments(result.Assignments, newTasks).Added;
                 NagasakiLog.Write($"LACS: 授業 {result.Courses} 件、課題 {assignments} 件、読めなかった授業 {result.Failed} 件");
                 // 授業が 1 つもなかった、またはどの授業も読めなかったときは、知らせておく
                 if (result.Courses == 0)
@@ -444,6 +453,8 @@ public sealed class NagasakiSync
                     {
                         if (NagasakiUniversity.ClassChangeHint(a.Title, a.Body) is { } hint)
                             changeAlerts.Add($"{a.CourseName}「{a.Title}」（{hint}）");
+                        else
+                            newNotices.Add($"{a.CourseName}「{a.Title}」");
                     }
                 }
                 newAnnouncements = App.Database.SaveAnnouncements(AnnouncementSource.Lacs, result.Announcements.Select(a =>
@@ -465,7 +476,7 @@ public sealed class NagasakiSync
         if (changeAlerts.Count > 0)
             NagasakiLog.Write($"授業の変更：新しく {changeAlerts.Count} 件");
         return new NagasakiReport(!nuWebOk, !lacsOk, classes, assignments, added, error, lacsNote,
-            newAnnouncements + newNotices, changeAlerts);
+            newAnnouncements + newNoticeCount, changeAlerts, newTasks, newNotices);
     }
 
     /// <summary>休講・補講・教室変更 1 件を、知らせる文にする。例:「11/6（金）1 限 線形代数学：休講」</summary>

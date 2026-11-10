@@ -9,7 +9,7 @@ using Seigetsu.Data;
 namespace Seigetsu.Services;
 
 /// <summary>通知の種類。種類ごとに見出し・アイコンの色・音を変える。</summary>
-public enum ToastKind { Timer, Due, Classes, Study, Update, App }
+public enum ToastKind { Timer, Due, Classes, Study, Update, App, News }
 
 /// <summary>通知に並べるボタン。押すと Action の名前が霽月に届く。</summary>
 public sealed record ToastButtonSpec(string Label, string Action);
@@ -159,7 +159,7 @@ public static class Toasts
     {
         ToastKind.Timer => SettingKeys.SoundTimer,
         ToastKind.Due => SettingKeys.SoundDue,
-        ToastKind.Classes => SettingKeys.SoundClasses,
+        ToastKind.Classes or ToastKind.News => SettingKeys.SoundClasses, // 大学からの知らせは同じ音
         ToastKind.Study => SettingKeys.SoundStudy,
         _ => null,
     };
@@ -183,6 +183,7 @@ public static class Toasts
         ToastKind.Classes => ("授業の変更", "\uE7BE", "#A9544C"),
         ToastKind.Study => ("勉強のお知らせ", "\uE8F1", "#6B7F3E"),
         ToastKind.Update => ("アップデート", "\uE896", "#4A6FA5"),
+        ToastKind.News => ("大学のお知らせ", "", "#7A5C99"),
         _ => ("霽月", "\uE946", "#5B5F97"),
     };
 

@@ -51,15 +51,23 @@ public static partial class NagasakiUniversity
         return $"{a.Title}（{course}{a.Due:H:mm} 締切）";
     }
 
-    /// <summary>課題をタスクに取り込む。提出済みのものは完了にする。(新しく足した数, 取り込み済みだった数)</summary>
-    public static (int Added, int Updated) ImportAssignments(IEnumerable<LacsAssignment> assignments)
+    /// <summary>
+    /// 課題をタスクに取り込む。提出済みのものは完了にする。(新しく足した数, 取り込み済みだった数)
+    /// newOpen を渡すと、新しく足した課題のうち、まだ出していないものを「題名（授業・11/7 23:59 締切）」の形で入れる（通知に並べるため）。
+    /// </summary>
+    public static (int Added, int Updated) ImportAssignments(IEnumerable<LacsAssignment> assignments,
+        List<string>? newOpen = null)
     {
         var db = App.Database;
         int added = 0, updated = 0;
         foreach (var a in assignments)
         {
             if (db.UpsertLacsTask(a.Id, TaskTitle(a), a.Due.ToString("yyyy-MM-dd"), a.Submitted))
+            {
                 added++;
+                if (!a.Submitted)
+                    newOpen?.Add($"{a.Title}（{(a.Course == "" ? "" : a.Course + "・")}{a.Due:M/d H:mm} 締切）");
+            }
             else
                 updated++;
         }

@@ -45,6 +45,7 @@ public static class SettingKeys
     public const string FocusLock = "focus_lock";               // 1 / 0 集中タイマーのあいだ全画面でロックするか（v7 だけの設定）
     public const string DueNotify = "due_notify";               // 1 / 0 締切の通知（v7 だけの設定）
     public const string DueNotifiedOn = "due_notified_on";      // 締切を最後に知らせた日（yyyy-MM-dd）
+    public const string DueEveningOn = "due_evening_on";        // 夜の締切の通知（残っている今日の分と、明日の分）を最後に出した日
     public const string SoundTimer = "notify_sound_timer";      // 通知の音（タイマー）。default / reminder / mail / im / sms / silent（v7 だけの設定）
     public const string SoundDue = "notify_sound_due";          // 通知の音（締切）
     public const string SoundClasses = "notify_sound_classes";  // 通知の音（授業の変更）

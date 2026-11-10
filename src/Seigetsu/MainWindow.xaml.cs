@@ -396,6 +396,7 @@ public partial class MainWindow : FluentWindow
             }
         }
         RemindDueTasks();
+        RemindDueEvening();
     }
 
     /// <summary>
@@ -411,6 +412,12 @@ public partial class MainWindow : FluentWindow
         // 「1 時間後にもう一度」で呼ばれたときは、今日もう知らせていても知らせる
         if (!snoozed && db.GetSetting(SettingKeys.DueNotifiedOn, "") == today)
             return;
+        // その日はじめて見たのが夜なら、夜の通知（RemindDueEvening）に任せる（同じ種類の通知は後のものが前のものを消すため）
+        if (!snoozed && DateTime.Now.Hour >= DueEveningHour)
+        {
+            db.SetSetting(SettingKeys.DueNotifiedOn, today);
+            return;
+        }
         var (overdue, dueToday) = db.DueCounts();
         if (overdue + dueToday == 0)
             return;
@@ -437,12 +444,59 @@ public partial class MainWindow : FluentWindow
         db.SetSetting(SettingKeys.DueNotifiedOn, today);
     }
 
+    // 夜の締切の通知を出す時刻（この時刻から日付が変わるまでのあいだに 1 回）
+    private const int DueEveningHour = 20;
+
+    /// <summary>
+    /// 夜 8 時を過ぎたら、まだ残っている今日が締切のタスクと、明日が締切のタスクを 1 日 1 回知らせる。
+    /// 朝の通知を見逃しても気づけるように、また前の日のうちに明日の締切が分かるようにするため。
+    /// </summary>
+    private void RemindDueEvening()
+    {
+        var db = App.Database;
+        if (db.GetSetting(SettingKeys.DueNotify, "1") != "1")
+            return;
+        var now = DateTime.Now;
+        if (now.Hour < DueEveningHour)
+            return;
+        var today = now.ToString("yyyy-MM-dd");
+        if (db.GetSetting(SettingKeys.DueEveningOn, "") == today)
+            return;
+        db.SetSetting(SettingKeys.DueEveningOn, today);
+
+        var dueToday = db.TasksOn(today).Where(t => !t.Completed).ToList();
+        var dueTomorrow = db.TasksOn(now.Date.AddDays(1).ToString("yyyy-MM-dd")).Where(t => !t.Completed).ToList();
+        if (dueToday.Count + dueTomorrow.Count == 0)
+            return;
+
+        var title = dueToday.Count > 0
+            ? $"今日が締切のタスクが、まだ {dueToday.Count} 件残っています"
+            : $"明日が締切のタスクが {dueTomorrow.Count} 件あります";
+        var body = dueToday.Count > 0
+            ? (dueTomorrow.Count > 0 ? $"明日が締切のタスクも {dueTomorrow.Count} 件あります。" : "")
+              + "日付が変わる前に、片づけてしまいましょう。"
+            : "今夜のうちに少し進めておくと、明日が楽になります。";
+        var all = dueToday.Select(t => $"{t.Title}（今日まで）")
+            .Concat(dueTomorrow.Select(t => $"{t.Title}（明日まで）")).ToList();
+        ShowToast(ToastKind.Due, title, body, all.Take(3).ToList(),
+            note: all.Count > 3 ? $"ほか {all.Count - 3} 件" : null,
+            buttons: [new("タスクを開く", "tasks"), new("集中タイマーを始める", "startFocus")], clickAction: "tasks");
+    }
+
     // 勉強の通知を出す時刻
     private static readonly int[] StudyHours = [10, 14, 18];
 
+    // 最後の枠（18 時）の通知は、この時刻まで出す
+    private const int StudyLastHour = 22;
+
+    // 集中タイマーで作業していたために後回しにした枠（タイマーが止まったら出す）
+    private string? _studyDeferred;
+
     /// <summary>
     /// 10・14・18 時に、締切の近い課題があればそれを、なければ勉強をうながす通知を出す。
-    /// スリープの復帰や起動が少し遅れたときのために、その時刻から 1 時間のあいだなら出す（1 つの枠で 1 回だけ）。
+    /// その時刻に PC がスリープしていたり、霽月を起動していなかったりしたときは、次の枠が始まるまで
+    /// （18 時の枠は 22 時まで）のあいだに気づいたところで出す。1 つの枠で 1 回だけで、過ぎた枠をさかのぼっては出さない。
+    /// 集中タイマーで作業している最中は出さず、タイマーが止まってから出す。
     /// </summary>
     private void RemindStudy()
     {
@@ -450,20 +504,31 @@ public partial class MainWindow : FluentWindow
         if (db.GetSetting(SettingKeys.StudyNotify, "1") != "1")
             return;
         var now = DateTime.Now;
-        var hour = StudyHours.FirstOrDefault(h => now >= now.Date.AddHours(h) && now < now.Date.AddHours(h + 1));
-        if (hour == 0)
+        // いちばん新しい、もう始まっている枠
+        var slotHour = StudyHours.LastOrDefault(h => now.Hour >= h);
+        if (slotHour == 0 || now.Hour >= StudyLastHour)
             return;
-        var slot = $"{now:yyyy-MM-dd} {hour:00}";
+        var slot = $"{now:yyyy-MM-dd} {slotHour:00}";
         if (db.GetSetting(SettingKeys.StudyNotified, "") == slot)
             return;
-        db.SetSetting(SettingKeys.StudyNotified, slot);
 
-        // 集中タイマーで作業している最中は、じゃましない
+        // 集中タイマーで作業している最中は、じゃましない。タイマーが止まったら出す（枠は「知らせた」ことにしない）
         if (App.Timer.Running && !(App.Timer.IsPomodoro && App.Timer.Phase == TimerPhase.Break))
+        {
+            _studyDeferred = slot;
             return;
+        }
+        db.SetSetting(SettingKeys.StudyNotified, slot);
+        var deferred = _studyDeferred == slot;
+        _studyDeferred = null;
 
+        // 文は、枠の時刻ではなく今の時刻に合わせる（14 時の枠を 17 時に出すなら、夕方の言い方）
+        var hour = now.Hour;
         var today = now.ToString("yyyy-MM-dd");
         var tasks = db.UpcomingTasks(days: 3);
+        // 作業が終わったばかりの人に「勉強しましょう」とは言わない（締切の近い課題があるときだけ知らせる）
+        if (deferred && tasks.Count == 0)
+            return;
         if (tasks.Count > 0)
         {
             var overdue = tasks.Count(t => string.CompareOrdinal(t.DueDate, today) < 0);
@@ -599,6 +664,7 @@ public partial class MainWindow : FluentWindow
     private void OnNagasakiSynced(NagasakiReport report, bool userAsked)
     {
         DataChanged();
+        NotifyNews(report);
         // 休講・補講・教室変更（と、それを知らせていそうな新しい連絡）が見つかったら、Windows の通知でも知らせる
         if (report.ChangeAlerts is { Count: > 0 } changes)
         {
@@ -621,6 +687,32 @@ public partial class MainWindow : FluentWindow
         else if (userAsked && !report.NeedsLogin)
             Notify("大学の情報を更新しました。");
         _nagasakiLoginNotified = report.NeedsLogin;
+    }
+
+    /// <summary>
+    /// 大学の更新で、新しい課題や新しい連絡事項・掲示が見つかったら、Windows の通知で知らせる
+    /// （霽月の窓を閉じていても気づけるように）。授業の変更の通知とは別の通知として出す。
+    /// </summary>
+    private void NotifyNews(NagasakiReport report)
+    {
+        var tasks = report.NewTasks ?? [];
+        var notices = report.NewNotices ?? [];
+        if (tasks.Count + notices.Count == 0)
+            return;
+        var title = tasks.Count > 0 && notices.Count > 0
+            ? $"新しい課題が {tasks.Count} 件、お知らせが {notices.Count} 件あります"
+            : tasks.Count > 0
+                ? $"新しい課題が {tasks.Count} 件あります"
+                : $"新しいお知らせが {notices.Count} 件あります";
+        var body = tasks.Count > 0 ? "課題はタスクに入れてあります。" : "大学のページで読めます。";
+        // 課題を先に、合わせて 3 件まで並べる
+        var all = tasks.Select(t => "課題：" + t).Concat(notices).ToList();
+        ShowToast(ToastKind.News, title, body, all.Take(3).ToList(),
+            note: all.Count > 3 ? $"ほか {all.Count - 3} 件" : null,
+            buttons: tasks.Count > 0
+                ? [new("タスクを開く", "tasks"), new("大学のページを開く", "university")]
+                : [new("大学のページを開く", "university"), new("LACS を開く", "lacs")],
+            clickAction: tasks.Count > 0 ? "tasks" : "university");
     }
 
     /// <summary>文字数カウンターを開く（もう開いていれば前に出すだけ）。</summary>
