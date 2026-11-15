@@ -256,9 +256,8 @@ public partial class MainWindow : FluentWindow
     {
         var message = $"新しい版 {version} の準備ができました。アプリを閉じると更新されます（設定画面から今すぐ更新もできます）。";
         Notify(message, ControlAppearance.Info, 8);
-        if (!IsActive)
-            ShowToast(ToastKind.Update, $"新しい版 {version} の準備ができました", "アプリを閉じると更新されます。",
-                buttons: [new("今すぐ更新", "updateNow")], clickAction: "settings");
+        ShowToast(ToastKind.Update, $"新しい版 {version} の準備ができました", "アプリを閉じると更新されます。",
+            buttons: [new("今すぐ更新", "updateNow")], clickAction: "settings");
         DataChanged(); // 設定画面を開いていれば「今すぐ更新」を出す
     }
 
@@ -664,6 +663,18 @@ public partial class MainWindow : FluentWindow
     private void OnNagasakiSynced(NagasakiReport report, bool userAsked)
     {
         DataChanged();
+        if (!NagasakiUniversity.Enabled)
+            return;
+        if (report.NeedsLogin && !_nagasakiLoginNotified && _nagasaki is null)
+        {
+            var sites = report.NuWebNeedsLogin && report.LacsNeedsLogin ? "NU-Web と LACS"
+                : report.NuWebNeedsLogin ? "NU-Web" : "LACS";
+            ShowToast(ToastKind.App, $"{sites} に再ログインが必要です", "ログインすると大学の情報の更新を再開できます。",
+                buttons: [new("ログインする", "universityLogin")], clickAction: "universityLogin");
+            _nagasakiLoginNotified = true;
+        }
+        else if (!report.NeedsLogin && report.Error is null)
+            _nagasakiLoginNotified = false;
         NotifyNews(report);
         // 休講・補講・教室変更（と、それを知らせていそうな新しい連絡）が見つかったら、Windows の通知でも知らせる
         if (report.ChangeAlerts is { Count: > 0 } changes)
@@ -679,14 +690,10 @@ public partial class MainWindow : FluentWindow
         }
         if (report.Error is { } error && userAsked)
             Notify($"大学の情報を更新できませんでした。\n{error}", ControlAppearance.Danger, 6);
-        else if (report.NeedsLogin && _nagasaki is null && (userAsked || !_nagasakiLoginNotified))
-            Notify("長崎大学のサイトのログインが切れています。設定の「長崎大学モード」からログインしてください。",
-                ControlAppearance.Caution, 8);
         else if (report.Added > 0)
             Notify($"LACS の課題を {report.Added} 件タスクに追加しました。");
         else if (userAsked && !report.NeedsLogin)
             Notify("大学の情報を更新しました。");
-        _nagasakiLoginNotified = report.NeedsLogin;
     }
 
     /// <summary>
@@ -876,6 +883,11 @@ public partial class MainWindow : FluentWindow
                     RemindDueTasks(snoozed: true);
                 };
                 _dueSnooze.Start();
+                break;
+            case "universityLogin":
+                ShowFromTray();
+                if (NagasakiUniversity.Enabled)
+                    OpenNagasakiLogin();
                 break;
             case "updateNow":
                 UpdateNow();
