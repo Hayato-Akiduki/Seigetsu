@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -133,7 +134,7 @@ public static class Toasts
             if (sound == "silent")
                 builder.AddAudio(new ToastAudio { Silent = true });
             else
-                builder.AddAudio(new Uri(SoundUri(sound)));
+                builder.AddAudio(new Uri("ms-winsoundevent:" + SoundEvent(sound)));
 
             builder.Show(toast =>
             {
@@ -164,14 +165,29 @@ public static class Toasts
         _ => null,
     };
 
-    private static string SoundUri(string sound) => sound switch
+    private static string SoundEvent(string sound) => sound switch
     {
-        "reminder" => "ms-winsoundevent:Notification.Reminder",
-        "mail" => "ms-winsoundevent:Notification.Mail",
-        "im" => "ms-winsoundevent:Notification.IM",
-        "sms" => "ms-winsoundevent:Notification.SMS",
-        _ => "ms-winsoundevent:Notification.Default",
+        "reminder" => "Notification.Reminder",
+        "mail" => "Notification.Mail",
+        "im" => "Notification.IM",
+        "sms" => "Notification.SMS",
+        _ => "Notification.Default",
     };
+
+    // 試聴は通知バナーの表示設定に依存せず、Windows の現在のサウンド設定から直接再生する。
+    internal static bool PlaySample(string sound)
+    {
+        if (sound == "silent")
+        {
+            PlaySound(null, IntPtr.Zero, 0);
+            return true;
+        }
+        const uint asyncPlayback = 0x0001, noDefault = 0x0002, alias = 0x00010000;
+        return PlaySound(SoundEvent(sound), IntPtr.Zero, alias | asyncPlayback | noDefault);
+    }
+
+    [DllImport("winmm.dll", EntryPoint = "PlaySoundW", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern bool PlaySound(string? sound, IntPtr module, uint flags);
 
     private static string KindId(ToastKind kind) => kind.ToString().ToLowerInvariant();
 

@@ -131,7 +131,7 @@
                     <StackPanel>
                         <TextBlock Text="通知の音" Style="{StaticResource CardTitle}" Margin="0,0,0,2" />
                         <TextBlock Style="{StaticResource Muted}" FontSize="12" Margin="0,0,0,12" TextWrapping="Wrap"
-                                   Text="Windows の通知で鳴らす音を、種類ごとに選べます。「試す」でその音の通知を出します。" />
+                                   Text="Windows の通知で鳴らす音を、種類ごとに選べます。「試す」で選んだ音を再生し、通知の見本を出します。" />
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />

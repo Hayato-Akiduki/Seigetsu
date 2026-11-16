@@ -224,9 +224,14 @@ public partial class SettingsPage : UserControl, IRefreshable
             ToastKind.Study => ("通知の見本：勉強の通知", "10 時・14 時・18 時に、このように知らせます。"),
             _ => ("通知の見本：授業の変更", "休講・補講・教室変更や、新しい課題・お知らせが見つかると、このように知らせます。"),
         };
-        if (!Toasts.Show(kind, title, body))
-            Main.Notify("Windows の通知を出せませんでした。Windows の設定で、霽月の通知がオフになっていないか確かめてください。",
+        var sound = Toasts.SoundFor(kind);
+        var played = Toasts.PlaySample(sound);
+        Toasts.Show(kind, title, body, soundOverride: "silent");
+        if (!played)
+            Main.Notify("試聴できませんでした。Windows のサウンド設定と出力先を確認してください。",
                 Wpf.Ui.Controls.ControlAppearance.Caution, 6);
+        else if (sound == "silent")
+            Main.Notify("「鳴らさない」が選ばれています。");
     }
 
     private void OnNagasakiModeChanged(object sender, SelectionChangedEventArgs e)
