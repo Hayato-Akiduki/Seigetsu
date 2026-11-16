@@ -490,7 +490,7 @@ public sealed class SeigetsuDatabase
     }
 
     /// <summary>締切の通知用: 未完了のタスクのうち、(期限切れの数, 今日が締切の数)。</summary>
-    public (int Overdue, int Today) DueCounts()
+    public (int Overdue, int Today) DueCounts(string? day = null)
     {
         using var connection = Open();
         using var command = connection.CreateCommand();
@@ -498,7 +498,7 @@ public sealed class SeigetsuDatabase
             SELECT COALESCE(SUM(due_date < $today), 0), COALESCE(SUM(due_date = $today), 0)
             FROM tasks WHERE completed = 0 AND due_date <> ''
             """;
-        command.Parameters.AddWithValue("$today", Today);
+        command.Parameters.AddWithValue("$today", day ?? Today);
         using var reader = command.ExecuteReader();
         reader.Read();
         return (reader.GetInt32(0), reader.GetInt32(1));
@@ -1005,13 +1005,29 @@ public sealed class SeigetsuDatabase
     }
 
     // ---- 作業記録 -----------------------------------------------------
-    /// <summary>計った時間を記録する。5 秒未満は押し間違いとみなして記録しない（v6 と同じ）。</summary>
-    public void AddSession(int durationSeconds, string mode)
+    /// <summary>1 回の計測の日別内訳をまとめて保存する。</summary>
+    public void AddWorkDays(IEnumerable<(DateTime Start, TimeSpan Duration)> days, string mode)
     {
-        if (durationSeconds < 5)
-            return;
-        Execute("INSERT INTO work_sessions (started_at, duration_seconds, mode) VALUES ($at, $seconds, $mode)",
-            ("$at", Now), ("$seconds", durationSeconds), ("$mode", mode));
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "INSERT INTO work_sessions (started_at, duration_seconds, mode) VALUES ($at, $seconds, $mode)";
+        var at = command.Parameters.Add("$at", SqliteType.Text);
+        var seconds = command.Parameters.Add("$seconds", SqliteType.Integer);
+        command.Parameters.AddWithValue("$mode", mode);
+        long carry = 0;
+        foreach (var day in days)
+        {
+            // 1 秒未満の端数を翌日に繰り越し、日別の合計と計測全体の秒数をそろえる。
+            var whole = Math.DivRem(day.Duration.Ticks + carry, TimeSpan.TicksPerSecond, out carry);
+            if (whole == 0)
+                continue;
+            at.Value = day.Start.ToString("yyyy-MM-ddTHH:mm:ss");
+            seconds.Value = whole;
+            command.ExecuteNonQuery();
+        }
+        transaction.Commit();
     }
 
     /// <summary>day（yyyy-MM-dd）以降の作業秒数。null なら累計。</summary>

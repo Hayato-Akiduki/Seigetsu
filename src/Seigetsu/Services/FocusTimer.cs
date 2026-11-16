@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Seigetsu.Data;
 
 namespace Seigetsu.Services;
@@ -16,7 +15,7 @@ public enum TimerFinish { Work, Break, Countdown }
 /// 計った時間は v6 と同じ mode 名で work_sessions に保存する（分析画面で v6 の記録と一緒に数えられる）。
 /// タイマー（Countdown）は料理やカップ麺などにも使えるよう、作業の記録には入れない。
 /// </summary>
-public sealed class FocusTimer(SeigetsuDatabase db)
+public sealed class FocusTimer(SeigetsuDatabase db, TimeProvider? timeProvider = null)
 {
     // work_sessions.mode に入れる名前（v6 と同じ）
     public const string StopwatchModeName = "通常";
@@ -25,9 +24,10 @@ public sealed class FocusTimer(SeigetsuDatabase db)
     // Tick の間がこれより空いたら、PC がスリープしていたとみなす（ふだんは 0.5 秒ごとに呼ばれる）
     private static readonly TimeSpan SleepGap = TimeSpan.FromSeconds(60);
 
-    private long _startedAt;     // 動き始めた時刻（Stopwatch のタイムスタンプ）
-    private long _lastTick;      // 前に Tick が呼ばれた時刻（スリープに気づくため）
-    private double _accumulated; // 一時停止までにたまった秒数
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+    private readonly SortedDictionary<DateTime, (DateTime Start, TimeSpan Duration)> _workDays = [];
+    private long _lastTick;
+    private TimeSpan _accumulated;
 
     private int? _startedPhaseSeconds;
 
@@ -51,7 +51,7 @@ public sealed class FocusTimer(SeigetsuDatabase db)
         _ => "ストップウォッチ",
     };
 
-    public bool IsIdle => !Running && _accumulated == 0;
+    public bool IsIdle => !Running && _accumulated == TimeSpan.Zero;
 
     // ---- 設定値（設定画面で変えられる。v6 と同じキー） ------------------
     public int WorkSeconds => Math.Max(1, db.GetIntSetting(SettingKeys.WorkMinutes, 25)) * 60;
@@ -71,8 +71,8 @@ public sealed class FocusTimer(SeigetsuDatabase db)
 
     // ---- 状態 ---------------------------------------------------------
     public double Elapsed => Running
-        ? _accumulated + Stopwatch.GetElapsedTime(_startedAt).TotalSeconds
-        : _accumulated;
+        ? (_accumulated + _clock.GetElapsedTime(_lastTick)).TotalSeconds
+        : _accumulated.TotalSeconds;
 
     public double Remaining => Math.Max(0, PhaseLength - Elapsed);
 
@@ -89,15 +89,14 @@ public sealed class FocusTimer(SeigetsuDatabase db)
         if (IsPomodoro)
             _startedPhaseSeconds ??= PhaseLength;
         Running = true;
-        _startedAt = Stopwatch.GetTimestamp();
-        _lastTick = _startedAt;
+        _lastTick = _clock.GetTimestamp();
     }
 
     public void Pause()
     {
         if (!Running)
             return;
-        _accumulated = Elapsed;
+        CaptureElapsed();
         Running = false;
     }
 
@@ -114,7 +113,7 @@ public sealed class FocusTimer(SeigetsuDatabase db)
     {
         RecordPartial();
         Running = false;
-        _accumulated = 0;
+        _accumulated = TimeSpan.Zero;
         Phase = TimerPhase.Work;
         _startedPhaseSeconds = null;
     }
@@ -134,7 +133,7 @@ public sealed class FocusTimer(SeigetsuDatabase db)
         if (!IsCountdown)
             return;
         Running = false;
-        _accumulated = 0;
+        _accumulated = TimeSpan.Zero;
     }
 
     /// <summary>ポモドーロの今のフェーズを終えて、次へ進む。</summary>
@@ -144,7 +143,7 @@ public sealed class FocusTimer(SeigetsuDatabase db)
             return;
         RecordPartial();
         Running = false;
-        _accumulated = 0;
+        _accumulated = TimeSpan.Zero;
         Phase = Next(Phase);
         _startedPhaseSeconds = null;
     }
@@ -152,36 +151,51 @@ public sealed class FocusTimer(SeigetsuDatabase db)
     /// <summary>定期的に呼ぶ。ポモドーロのフェーズやタイマーが終わったら、終わったものを返す。</summary>
     public TimerFinish? Tick()
     {
-        SkipSleep();
-        if (!CountsDown || !Running || Remaining > 0)
+        CaptureElapsed();
+        if (!CountsDown || !Running || _accumulated.TotalSeconds < PhaseLength)
             return null;
+        if (IsPomodoro && Phase == TimerPhase.Work)
+            SaveWork();
         Running = false;
-        _accumulated = 0;
+        _accumulated = TimeSpan.Zero;
         if (IsCountdown)
             return TimerFinish.Countdown; // 止めて、最初の長さに戻す
         var finished = Phase;
-        if (finished == TimerPhase.Work)
-            db.AddSession(PhaseLength, PomodoroWorkModeName);
         Phase = Next(finished);
         _startedPhaseSeconds = null;
         return finished == TimerPhase.Work ? TimerFinish.Work : TimerFinish.Break;
     }
 
-    /// <summary>
-    /// PC がスリープしていた時間を、作業時間に数えない。Stopwatch の時計はスリープ中も進むので、
-    /// 計っている最中にふたを閉じると、寝ていた時間まで作業の記録に入ってしまう。
-    /// 前の Tick から長く空いていたら、その分だけ始まりの時刻をずらして、なかったことにする。
-    /// 休憩と「タイマー」は実際の時刻どおりに進める（スリープから戻ったら終わっている方が自然なため）。
-    /// </summary>
-    private void SkipSleep()
+    // 前回から実際に計測した区間だけを足す。休憩と普通のタイマーはスリープ中も進める。
+    private void CaptureElapsed()
     {
         if (!Running)
             return;
-        var now = Stopwatch.GetTimestamp();
-        var countsAsWork = Mode == TimerMode.Stopwatch || (IsPomodoro && Phase == TimerPhase.Work);
-        if (countsAsWork && Stopwatch.GetElapsedTime(_lastTick, now) > SleepGap)
-            _startedAt += now - _lastTick;
+        var now = _clock.GetTimestamp();
+        var interval = _clock.GetElapsedTime(_lastTick, now);
         _lastTick = now;
+        if (Mode == TimerMode.Stopwatch || (IsPomodoro && Phase == TimerPhase.Work))
+        {
+            if (interval > SleepGap)
+                return;
+            var start = _clock.GetLocalNow().DateTime - interval;
+            if (IsPomodoro)
+            {
+                var remaining = TimeSpan.FromSeconds(PhaseLength) - _accumulated;
+                if (interval > remaining)
+                    interval = remaining;
+            }
+            var end = start + interval;
+            while (start < end)
+            {
+                var midnight = start.Date.AddDays(1);
+                var until = end < midnight ? end : midnight;
+                var day = _workDays.GetValueOrDefault(start.Date, (Start: start, Duration: TimeSpan.Zero));
+                _workDays[start.Date] = (day.Start, day.Duration + (until - start));
+                start = until;
+            }
+        }
+        _accumulated += interval;
     }
 
     private static TimerPhase Next(TimerPhase phase) =>
@@ -190,14 +204,15 @@ public sealed class FocusTimer(SeigetsuDatabase db)
     // 休憩時間とタイマーは記録しない（休憩は v6 と同じ）
     private void RecordPartial()
     {
-        var seconds = (int)Elapsed;
-        if (Mode == TimerMode.Stopwatch)
-            db.AddSession(seconds, StopwatchModeName);
-        else if (IsPomodoro && Phase == TimerPhase.Work)
-            db.AddSession(seconds, PomodoroWorkModeName);
-        _accumulated = 0;
-        if (Running)
-            _startedAt = Stopwatch.GetTimestamp();
+        CaptureElapsed();
+        SaveWork();
+    }
+
+    private void SaveWork()
+    {
+        if (_accumulated >= TimeSpan.FromSeconds(5) && _workDays.Count > 0)
+            db.AddWorkDays(_workDays.Values, IsPomodoro ? PomodoroWorkModeName : StopwatchModeName);
+        _workDays.Clear();
     }
 
     // ---- 表示用 -------------------------------------------------------
@@ -236,19 +251,19 @@ public sealed class FocusTimer(SeigetsuDatabase db)
         {
             if (Running)
                 return "作動中";
-            return _accumulated > 0 ? "一時停止中" : $"待機中（{LengthLabel(CountdownSeconds)}）";
+            return _accumulated > TimeSpan.Zero ? "一時停止中" : $"待機中（{LengthLabel(CountdownSeconds)}）";
         }
         var phase = PhaseName(Phase);
         if (IsPomodoro)
         {
             if (Running)
                 return $"{phase}中";
-            if (_accumulated > 0)
+            if (_accumulated > TimeSpan.Zero)
                 return $"{phase}（一時停止中）";
             return $"次は{phase}（{PhaseLength / 60}分）";
         }
         if (Running)
             return "計測中";
-        return _accumulated > 0 ? "一時停止中" : "待機中";
+        return _accumulated > TimeSpan.Zero ? "一時停止中" : "待機中";
     }
 }

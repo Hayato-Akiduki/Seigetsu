@@ -424,10 +424,7 @@ public partial class MainWindow : FluentWindow
             return;
         // その日はじめて見たのが夜なら、夜の通知（RemindDueEvening）に任せる（同じ種類の通知は後のものが前のものを消すため）
         if (!snoozed && DateTime.Now.Hour >= DueEveningHour)
-        {
-            db.SetSetting(SettingKeys.DueNotifiedOn, today);
             return;
-        }
         var (overdue, dueToday) = db.DueCounts();
         if (overdue + dueToday == 0)
             return;
@@ -461,36 +458,42 @@ public partial class MainWindow : FluentWindow
     /// 夜 8 時を過ぎたら、まだ残っている今日が締切のタスクと、明日が締切のタスクを 1 日 1 回知らせる。
     /// 朝の通知を見逃しても気づけるように、また前の日のうちに明日の締切が分かるようにするため。
     /// </summary>
-    private void RemindDueEvening()
+    private void RemindDueEvening() =>
+        RemindDueEvening(App.Database, DateTime.Now, (title, body, lines, note) =>
+            ShowToast(ToastKind.Due, title, body, lines, note: note,
+                buttons: [new("タスクを開く", "tasks"), new("集中タイマーを始める", "startFocus")], clickAction: "tasks"));
+
+    internal static void RemindDueEvening(SeigetsuDatabase db, DateTime now,
+        Action<string, string, IReadOnlyList<string>, string?> notify)
     {
-        var db = App.Database;
         if (db.GetSetting(SettingKeys.DueNotify, "1") != "1")
             return;
-        var now = DateTime.Now;
         if (now.Hour < DueEveningHour)
             return;
         var today = now.ToString("yyyy-MM-dd");
         if (db.GetSetting(SettingKeys.DueEveningOn, "") == today)
             return;
-        db.SetSetting(SettingKeys.DueEveningOn, today);
-
         var dueToday = db.TasksOn(today).Where(t => !t.Completed).ToList();
         var dueTomorrow = db.TasksOn(now.Date.AddDays(1).ToString("yyyy-MM-dd")).Where(t => !t.Completed).ToList();
-        if (dueToday.Count + dueTomorrow.Count == 0)
+        var overdue = db.GetSetting(SettingKeys.DueNotifiedOn, "") == today ? 0 : db.DueCounts(today).Overdue;
+        if (dueToday.Count + dueTomorrow.Count + overdue == 0)
             return;
 
         var title = dueToday.Count > 0
             ? $"今日が締切のタスクが、まだ {dueToday.Count} 件残っています"
-            : $"明日が締切のタスクが {dueTomorrow.Count} 件あります";
+            : dueTomorrow.Count > 0 ? $"明日が締切のタスクが {dueTomorrow.Count} 件あります"
+            : $"期限切れのタスクが {overdue} 件あります";
         var body = dueToday.Count > 0
             ? (dueTomorrow.Count > 0 ? $"明日が締切のタスクも {dueTomorrow.Count} 件あります。" : "")
               + "日付が変わる前に、片づけてしまいましょう。"
-            : "今夜のうちに少し進めておくと、明日が楽になります。";
+            : dueTomorrow.Count > 0 ? "今夜のうちに少し進めておくと、明日が楽になります。"
+            : NotifyPhrases.DueBody(overdueOnly: true);
+        if (overdue > 0 && dueToday.Count + dueTomorrow.Count > 0)
+            body += $" 期限切れのタスクも {overdue} 件あります。";
         var all = dueToday.Select(t => $"{t.Title}（今日まで）")
             .Concat(dueTomorrow.Select(t => $"{t.Title}（明日まで）")).ToList();
-        ShowToast(ToastKind.Due, title, body, all.Take(3).ToList(),
-            note: all.Count > 3 ? $"ほか {all.Count - 3} 件" : null,
-            buttons: [new("タスクを開く", "tasks"), new("集中タイマーを始める", "startFocus")], clickAction: "tasks");
+        notify(title, body, all.Take(3).ToList(), all.Count > 3 ? $"ほか {all.Count - 3} 件" : null);
+        db.SetSetting(SettingKeys.DueEveningOn, today);
     }
 
     // 勉強の通知を出す時刻
