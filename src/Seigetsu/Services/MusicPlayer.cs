@@ -72,41 +72,39 @@ public sealed class MusicPlayer : IDisposable
             return;
         index = ((index % Tracks.Count) + Tracks.Count) % Tracks.Count;
         var path = Tracks[index].Path;
-        if (!File.Exists(path))
-            throw new FileNotFoundException("ファイルが見つかりません。", path);
-
         CloseOutput();
-        ISampleProvider reader = System.IO.Path.GetExtension(path).Equals(".ogg", StringComparison.OrdinalIgnoreCase)
-            ? new VorbisWaveReader(path)
-            : new AudioFileReader(path);
-        _reader = (IDisposable)reader;
-
-        // 曲の頭を 0.6 秒かけて大きくする（v6 と同じ）
-        var fade = new FadeInOutSampleProvider(reader, initiallySilent: true);
-        fade.BeginFadeIn(FadeInMilliseconds);
-        _volumeProvider = new VolumeSampleProvider(fade) { Volume = (float)Volume };
-
         try
         {
+            if (!File.Exists(path))
+                throw new FileNotFoundException("ファイルが見つかりません。", path);
+
+            ISampleProvider reader = System.IO.Path.GetExtension(path).Equals(".ogg", StringComparison.OrdinalIgnoreCase)
+                ? new VorbisWaveReader(path)
+                : new AudioFileReader(path);
+            _reader = (IDisposable)reader;
+
+            // 曲の頭を 0.6 秒かけて大きくする（v6 と同じ）
+            var fade = new FadeInOutSampleProvider(reader, initiallySilent: true);
+            fade.BeginFadeIn(FadeInMilliseconds);
+            _volumeProvider = new VolumeSampleProvider(fade) { Volume = (float)Volume };
+
             // 共有モード（ほかのアプリの音と一緒に鳴らす）
             var output = new WasapiPlayerBuilder()
                 .WithSharedMode()
                 .Build();
+            _output = output;
             output.Init(new SampleToWaveProvider(_volumeProvider));
             output.PlaybackStopped += OnPlaybackStopped;
-            _output = output;
             output.Play();
             Error = "";
         }
-        catch (Exception error) when (error is not FileNotFoundException)
+        catch (Exception error)
         {
-            // 音声デバイスが無い・使えないとき
-            CloseOutput();
-            Error = error.Message;
-            Index = -1;
-            Paused = false;
-            StateChanged?.Invoke();
-            throw new InvalidOperationException($"音声を再生できませんでした。\n{error.Message}", error);
+            Error = $"{Tracks[index].FileName}：{error.Message}";
+            Stop();
+            if (error is FileNotFoundException)
+                throw;
+            throw new InvalidOperationException($"音声を再生できませんでした。\n{Error}", error);
         }
 
         Index = index;
@@ -137,6 +135,11 @@ public sealed class MusicPlayer : IDisposable
             return;
         if (Shuffle && Tracks.Count > 1)
         {
+            if (Current is null)
+            {
+                Play(_random.Next(Tracks.Count));
+                return;
+            }
             // 今の曲以外からランダムに選ぶ
             var choice = _random.Next(Tracks.Count - 1);
             Play(choice >= Index ? choice + 1 : choice);
@@ -182,10 +185,9 @@ public sealed class MusicPlayer : IDisposable
                 else
                     Next();
             }
-            catch (Exception)
+            catch (Exception error) when (error is FileNotFoundException or InvalidOperationException)
             {
-                // 次の曲が無い・読めないときは止める
-                Stop();
+                // Play が停止状態に戻し、失敗した曲と理由を画面に通知済み。
             }
         });
     }

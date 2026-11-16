@@ -34,7 +34,11 @@ public partial class DesktopStickyWindow : Window
         UpdatePin();
         _saveDelay.Tick += (_, _) => SaveBounds();
         // 最初に置いたときの動きは保存しない
-        ContentRendered += (_, _) => _ready = true;
+        ContentRendered += (_, _) =>
+        {
+            _ready = true;
+            RestoreVisibleHeader();
+        };
         // クリックしたり編集を終えたりしたあとも、うしろに戻す
         Deactivated += (_, _) => SendToBack();
         Closed += (_, _) =>
@@ -56,6 +60,28 @@ public partial class DesktopStickyWindow : Window
         Root.Background = ThemeService.StickyBrush(note);
         Root.BorderBrush = ThemeService.Brush("LineBrush");
     }
+
+    private void RestoreVisibleHeader()
+    {
+        // 見出しと各モニターの作業領域を、同じスクリーン座標（ピクセル）で比べる。
+        var header = new Rect(TitleText.PointToScreen(new Point()),
+            TitleText.PointToScreen(new Point(TitleText.ActualWidth, TitleText.ActualHeight)));
+        var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(this);
+        var areas = System.Windows.Forms.Screen.AllScreens.Select(screen => screen.WorkingArea)
+            .Select(area => new Rect(area.X, area.Y, area.Width, area.Height));
+        if (HasVisibleHeader(header, areas, dpi))
+            return;
+        var work = SystemParameters.WorkArea;
+        Left = Math.Max(work.Left, work.Right - Width - 24);
+        Top = work.Top + 24;
+    }
+
+    internal static bool HasVisibleHeader(Rect header, IEnumerable<Rect> areas, DpiScale dpi) =>
+        areas.Any(area =>
+        {
+            var visible = Rect.Intersect(header, area);
+            return visible.Width >= 24 * dpi.DpiScaleX && visible.Height >= 10 * dpi.DpiScaleY;
+        });
 
     private void UpdatePin()
     {

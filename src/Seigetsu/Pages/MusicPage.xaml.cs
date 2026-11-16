@@ -54,7 +54,7 @@ public partial class MusicPage : UserControl, IRefreshable
         var tracks = Player.Tracks;
 
         TrackText.Text = current?.Name ?? (Player.Error != "" ? "音声を再生できません" : "再生していません");
-        StateText.Text = Player.Error != "" ? $"音声デバイスを確認してください（{Player.Error}）"
+        StateText.Text = Player.Error != "" ? Player.Error
             : current is null ? (tracks.Count > 0 ? $"{tracks.Count}曲" : "曲を追加すると再生できます")
             : $"{(Player.Paused ? "一時停止中" : "再生中")} ・ {Player.Index + 1} / {tracks.Count}曲";
         PlayIcon.Symbol = Player.IsPlaying ? SymbolRegular.Pause24 : SymbolRegular.Play24;

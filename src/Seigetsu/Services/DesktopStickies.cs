@@ -83,7 +83,7 @@ public sealed class DesktopStickies
 
     private void Open(StickyNote note, DesktopSticky placement)
     {
-        var window = new DesktopStickyWindow(note, KeepOnScreen(placement));
+        var window = new DesktopStickyWindow(note, placement);
         // Alt+F4 などで閉じられたときも、デスクトップから外したことにする
         window.Closed += (_, _) =>
         {
@@ -102,18 +102,6 @@ public sealed class DesktopStickies
         // 先に一覧から外しておくと、Closed で二重に片付けない
         if (_windows.Remove(stickyId, out var window))
             window.Close();
-    }
-
-    /// <summary>モニターを外したなどで、保存した場所が画面の外になっていたら、右上に戻す。</summary>
-    private static DesktopSticky KeepOnScreen(DesktopSticky placement)
-    {
-        var screen = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
-            SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
-        // 上の帯（つかんで動かす所）が少しでも見えていればよい
-        if (screen.IntersectsWith(new Rect(placement.X, placement.Y, placement.Width, 32)))
-            return placement;
-        var area = SystemParameters.WorkArea;
-        return placement with { X = area.Right - placement.Width - 24, Y = area.Top + 24 };
     }
 
     // 付箋画面のボタンの見た目などを合わせる
