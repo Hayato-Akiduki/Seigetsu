@@ -44,8 +44,16 @@ public sealed class MemoListItem(Memo memo) : INotifyPropertyChanged
     public string DisplayTitle => NotesPage.DisplayTitleOf(_title);
 
     /// <summary>本文の最初の 1 行。</summary>
-    public string Preview =>
-        _body.Split('\n').Select(line => line.Trim()).FirstOrDefault(line => line != "") ?? "まだ何も書いていません";
+    public string Preview
+    {
+        get
+        {
+            foreach (var line in _body.AsSpan().EnumerateLines())
+                if (!line.IsWhiteSpace())
+                    return line.Trim().ToString();
+            return "まだ何も書いていません";
+        }
+    }
 
     private void Changed([CallerMemberName] string name = "") =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
@@ -146,16 +154,13 @@ public partial class NotesPage : UserControl, ISavable
         if (switching)
             StatusText.Text = "保存済み";
         App.Database.SetSetting(SelectedSetting, item.Id.ToString());
-        UpdateCount();
+        UpdateCount(item.Body);
     }
 
     private void OnTextChanged(object sender, TextChangedEventArgs e)
     {
-        UpdateCount();
-        if (_loading || _current is null)
-            return;
-        _current.Body = NormalizedText;
-        MarkDirty();
+        if (!_loading && _current is not null)
+            MarkDirty();
     }
 
     private void OnTitleChanged(object sender, TextChangedEventArgs e)
@@ -189,10 +194,10 @@ public partial class NotesPage : UserControl, ISavable
     /// </summary>
     private string NormalizedText => Body.Text.Replace("\r\n", "\n");
 
-    private void UpdateCount()
+    private void UpdateCount(string body)
     {
         // Python の len() と同じく、絵文字なども 1 文字と数える
-        CountText.Text = $"{NormalizedText.EnumerateRunes().Count()}文字";
+        CountText.Text = $"{body.EnumerateRunes().Count()}文字";
     }
 
     /// <summary>未保存の内容があれば保存する（メモを切りかえるとき・画面を移るとき・アプリを閉じるときにも呼ばれる）。</summary>
@@ -201,7 +206,10 @@ public partial class NotesPage : UserControl, ISavable
         _saveDelay.Stop();
         if (!_dirty || _current is null)
             return;
-        App.Database.SaveMemo(_current.Id, TitleBox.Text.Trim(), NormalizedText);
+        var body = NormalizedText;
+        App.Database.SaveMemo(_current.Id, TitleBox.Text.Trim(), body);
+        _current.Body = body;
+        UpdateCount(body);
         _dirty = false;
         StatusText.Text = $"保存しました（{DateTime.Now:HH:mm}）";
     }

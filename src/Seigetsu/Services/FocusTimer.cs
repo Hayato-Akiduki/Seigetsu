@@ -29,6 +29,8 @@ public sealed class FocusTimer(SeigetsuDatabase db)
     private long _lastTick;      // 前に Tick が呼ばれた時刻（スリープに気づくため）
     private double _accumulated; // 一時停止までにたまった秒数
 
+    private int? _startedPhaseSeconds;
+
     public TimerMode Mode { get; private set; } = TimerMode.Stopwatch;
 
     public TimerPhase Phase { get; private set; } = TimerPhase.Work;
@@ -64,7 +66,7 @@ public sealed class FocusTimer(SeigetsuDatabase db)
     public int PhaseLength => Mode switch
     {
         TimerMode.Countdown => CountdownSeconds,
-        _ => Phase == TimerPhase.Work ? WorkSeconds : BreakSeconds,
+        _ => _startedPhaseSeconds ?? (Phase == TimerPhase.Work ? WorkSeconds : BreakSeconds),
     };
 
     // ---- 状態 ---------------------------------------------------------
@@ -84,6 +86,8 @@ public sealed class FocusTimer(SeigetsuDatabase db)
     {
         if (Running)
             return;
+        if (IsPomodoro)
+            _startedPhaseSeconds ??= PhaseLength;
         Running = true;
         _startedAt = Stopwatch.GetTimestamp();
         _lastTick = _startedAt;
@@ -112,6 +116,7 @@ public sealed class FocusTimer(SeigetsuDatabase db)
         Running = false;
         _accumulated = 0;
         Phase = TimerPhase.Work;
+        _startedPhaseSeconds = null;
     }
 
     public void SetMode(TimerMode mode)
@@ -141,6 +146,7 @@ public sealed class FocusTimer(SeigetsuDatabase db)
         Running = false;
         _accumulated = 0;
         Phase = Next(Phase);
+        _startedPhaseSeconds = null;
     }
 
     /// <summary>定期的に呼ぶ。ポモドーロのフェーズやタイマーが終わったら、終わったものを返す。</summary>
@@ -157,6 +163,7 @@ public sealed class FocusTimer(SeigetsuDatabase db)
         if (finished == TimerPhase.Work)
             db.AddSession(PhaseLength, PomodoroWorkModeName);
         Phase = Next(finished);
+        _startedPhaseSeconds = null;
         return finished == TimerPhase.Work ? TimerFinish.Work : TimerFinish.Break;
     }
 

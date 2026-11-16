@@ -86,7 +86,7 @@
                 <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                     <StackPanel>
                         <TextBlock Text="集中タイマー（ポモドーロ）" Style="{StaticResource CardTitle}" Margin="0,0,0,2" />
-                        <TextBlock Text="作業と休憩の長さ（分）です。" Style="{StaticResource Muted}" FontSize="12" Margin="0,0,0,12" />
+                        <TextBlock Text="時間の変更は、次に開始する作業・休憩から反映されます。" Style="{StaticResource Muted}" FontSize="12" Margin="0,0,0,12" />
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="作業" Style="{StaticResource Muted}" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <ComboBox x:Name="WorkBox" Width="100" AutomationProperties.Name="作業の長さ（分）"
@@ -237,6 +237,8 @@
                         <TextBlock x:Name="DailyBackupText" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap"
                                    Margin="0,4,0,0" />
                         <WrapPanel Margin="0,12,0,0">
+                            <ui:Button x:Name="RetryBackupButton" Content="今すぐ再試行" Visibility="Collapsed"
+                                       Padding="14,7" Margin="0,0,8,8" Click="OnRetryBackupClick" />
                             <ui:Button Content="CSVで書き出す" Icon="{ui:SymbolIcon ArrowDownload24}" Padding="14,7"
                                        Margin="0,0,8,8" Click="OnExportClick" />
                             <ui:Button Content="データのフォルダを開く" Icon="{ui:SymbolIcon FolderOpen24}" Padding="14,7"

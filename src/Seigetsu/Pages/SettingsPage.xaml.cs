@@ -97,9 +97,7 @@ public partial class SettingsPage : UserControl, IRefreshable
         NagasakiStatusText.Text = "前回の更新：" + NagasakiSync.LastStatus;
         ClearTimetableButton.IsEnabled = classes > 0;
 
-        var latest = DailyBackup.Latest;
-        DailyBackupText.Text = $"毎日の自動バックアップ：{DailyBackup.Folder}（新しい方から {DailyBackup.Keep} 日分を残します。"
-                               + (latest is { } day ? $"いちばん新しいもの：{day:yyyy年M月d日}）" : "まだありません）");
+        RefreshBackup();
 
         var background = BackgroundImage.CurrentPath;
         BackgroundText.Text = background is null ? "設定なし" : Path.GetFileName(background);
@@ -365,6 +363,34 @@ public partial class SettingsPage : UserControl, IRefreshable
     private void OnOpenFolderClick(object sender, RoutedEventArgs e) => OpenFolder(AppPaths.DataDir);
 
     private void OnOpenBackupFolderClick(object sender, RoutedEventArgs e) => OpenFolder(DailyBackup.Folder);
+
+    internal void RefreshBackup()
+    {
+        string latest;
+        var error = Main.BackupError;
+        try
+        {
+            latest = DailyBackup.Latest is { } day ? $"{day:yyyy年M月d日}" : "まだありません";
+        }
+        catch (Exception readError) when (readError is IOException or UnauthorizedAccessException)
+        {
+            latest = "確認できません";
+            error ??= readError.Message;
+        }
+        DailyBackupText.Text = $"毎日の自動バックアップ：{DailyBackup.Folder}（{DailyBackup.Keep}日分を保存）\n最終バックアップ日：{latest}";
+        if (error is not null)
+            DailyBackupText.Text += $"\nバックアップのエラー：{error}";
+        RetryBackupButton.Visibility = error is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void OnRetryBackupClick(object sender, RoutedEventArgs e)
+    {
+        Main.RunDailyBackup();
+        RefreshBackup();
+        Main.Notify(RetryBackupButton.Visibility == Visibility.Visible
+            ? "再試行できませんでした。設定に表示された理由を確認してください。"
+            : "今日のバックアップを確認しました。");
+    }
 
     private void OnOpenScreenshotFolderClick(object sender, RoutedEventArgs e) => OpenFolder(Screenshot.Folder);
 

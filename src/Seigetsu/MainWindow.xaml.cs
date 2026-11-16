@@ -376,26 +376,37 @@ public partial class MainWindow : FluentWindow
     // ---- 1 日 1 回の仕事 ---------------------------------------------------
     private void RunDailyJobs()
     {
+        RunDailyBackup();
+        RemindDueTasks();
+        RemindDueEvening();
+    }
+
+    internal string? BackupError { get; private set; }
+
+    internal void RunDailyBackup()
+    {
+        var previousError = BackupError;
+        bool created = false;
         try
         {
-            if (DailyBackup.RunIfNeeded(App.Database))
-                DataChanged(); // 設定画面を開いていれば「いちばん新しいバックアップ」を直す
+            created = DailyBackup.RunIfNeeded(App.Database);
+            BackupError = null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException
                                           or Microsoft.Data.Sqlite.SqliteException)
         {
-            // バックアップできなくても、アプリはそのまま使えるようにする（理由は記録しておく）
+            BackupError = error.Message;
             try
             {
                 File.AppendAllText(AppPaths.ErrorLogPath,
                     $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] 自動バックアップ: {error}{Environment.NewLine}{Environment.NewLine}");
             }
-            catch (IOException)
+            catch (Exception logError) when (logError is IOException or UnauthorizedAccessException)
             {
             }
         }
-        RemindDueTasks();
-        RemindDueEvening();
+        if (PageHost.Content is SettingsPage settings && (created || previousError != BackupError))
+            settings.RefreshBackup();
     }
 
     /// <summary>
