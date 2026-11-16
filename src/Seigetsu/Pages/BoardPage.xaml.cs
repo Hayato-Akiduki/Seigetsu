@@ -286,7 +286,7 @@ public partial class BoardPage : UserControl, IRefreshable
         });
         detail.Children.Add(new TextBlock
         {
-            Text = TaskFormat.DueLabel(task.DueDate), FontSize = 12, Foreground = TaskFormat.DueBrush(task.DueDate, task.Completed),
+            Text = TaskFormat.DueLabel(task.DueDate, task.Completed), FontSize = 12, Foreground = TaskFormat.DueBrush(task.DueDate, task.Completed),
         });
         if (task.Favorite)
         {

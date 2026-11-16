@@ -371,8 +371,9 @@ public sealed class SeigetsuDatabase
         var where = new List<string>();
         if (!string.IsNullOrWhiteSpace(search))
         {
-            where.Add("(title LIKE $search OR category LIKE $search)");
-            command.Parameters.AddWithValue("$search", $"%{search.Trim()}%");
+            where.Add("(title LIKE $search ESCAPE '!' OR category LIKE $search ESCAPE '!')");
+            var literal = search.Trim().Replace("!", "!!").Replace("%", "!%").Replace("_", "!_");
+            command.Parameters.AddWithValue("$search", $"%{literal}%");
         }
         switch (filter)
         {

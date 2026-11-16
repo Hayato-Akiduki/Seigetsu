@@ -14,10 +14,12 @@ public static class TaskFormat
 {
     public static string Today => DateTime.Today.ToString("yyyy-MM-dd");
 
-    public static string DueLabel(string due)
+    public static string DueLabel(string due, bool completed = false)
     {
         if (due == "")
             return "期限なし";
+        if (completed)
+            return due;
         if (due == Today)
             return "今日まで";
         if (!DateTime.TryParseExact(due, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out var date))

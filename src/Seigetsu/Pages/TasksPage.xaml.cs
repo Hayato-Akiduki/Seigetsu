@@ -62,8 +62,6 @@ public partial class TasksPage : UserControl, IRefreshable
     private static TaskRowView ToRow(TaskItem task)
     {
         var muted = ThemeService.Brush("MutedBrush");
-        // 完了したタスクは「期限切れ」と出さず、締切日だけを出す（v6 と同じ）
-        var due = task.Completed && task.DueDate != "" ? task.DueDate : TaskFormat.DueLabel(task.DueDate);
         return new TaskRowView(
             task,
             task.Completed ? muted : ThemeService.Brush("TextBrush"),
@@ -71,7 +69,7 @@ public partial class TasksPage : UserControl, IRefreshable
             $"● 優先度 {task.Priority}",
             TaskFormat.PriorityBrush(task.Priority),
             $"#{task.Category}",
-            due,
+            TaskFormat.DueLabel(task.DueDate, task.Completed),
             TaskFormat.DueBrush(task.DueDate, task.Completed),
             task.Favorite ? ThemeService.Brush("WarningBrush") : muted);
     }
